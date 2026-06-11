@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SEA Transit — How far can you go by train?</title>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="search-container">
+        <input id="search-input" type="text" placeholder="Search stations..." autocomplete="off" />
+        <ul id="search-results"></ul>
+      </div>
+      <div id="map"></div>
+      <div id="controls">
+        <div id="slider-container">
+          <span id="slider-label">0h</span>
+          <input id="time-slider" type="range" min="0" max="10" value="4" step="1" />
+          <span id="slider-max-label">48h</span>
+        </div>
+        <div id="info">
+          <span id="station-name">KL Sentral</span>
+          <span id="station-count"></span>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
