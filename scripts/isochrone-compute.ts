@@ -1,5 +1,8 @@
-import { type Graph, type Station, TIME_BANDS } from "./utils";
+import type { Graph, Station } from "./utils";
 import { dijkstra } from "./graph";
+import { buffer, union, simplify, point } from "@turf/turf";
+
+const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
 
 interface GeoJSONFeature {
   type: "Feature";
@@ -30,8 +33,6 @@ export function computeIsochrones(
 
   const features: GeoJSONFeature[] = [];
 
-  const WALK_SPEED_KM_PER_MIN = 0.15;
-
   for (const maxTime of TIME_BANDS) {
     const reachableIds: string[] = [];
     for (const [id, time] of distances) {
@@ -40,26 +41,77 @@ export function computeIsochrones(
       }
     }
 
-    const points: Array<[number, number]> = [];
+    const reachableStations: Station[] = [];
     for (const id of reachableIds) {
-      const station = stationMap.get(id);
-      if (station) {
-        points.push([station.lng, station.lat]);
+      const s = stationMap.get(id);
+      if (s) reachableStations.push(s);
+    }
+
+    if (reachableStations.length < 2) {
+      if (reachableStations.length === 1) {
+        const s = reachableStations[0];
+        features.push({
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: [[
+              [s.lng - 0.01, s.lat - 0.01],
+              [s.lng + 0.01, s.lat - 0.01],
+              [s.lng + 0.01, s.lat + 0.01],
+              [s.lng - 0.01, s.lat + 0.01],
+              [s.lng - 0.01, s.lat - 0.01],
+            ]],
+          },
+          properties: {
+            duration: maxTime,
+            fillColor: getColorForBand(maxTime),
+            stationCount: 1,
+          },
+        });
+      }
+      continue;
+    }
+
+    const bufferKm = Math.min(maxTime * 0.08, 80);
+
+    const pts = reachableStations.map((s) =>
+      point([s.lng, s.lat], { id: s.id })
+    );
+
+    let merged: any = null;
+    for (const pt of pts) {
+      try {
+        const buf = buffer(pt, bufferKm, { units: "kilometers", steps: 24 });
+        if (!merged) {
+          merged = buf;
+        } else if (buf) {
+          merged = union(merged, buf);
+        }
+      } catch {
+        // skip failed buffer
       }
     }
 
-    if (points.length === 0) continue;
+    if (!merged) continue;
 
-    const polygon = convexHull(points);
-    if (!polygon) continue;
+    let simplified: any;
+    try {
+      simplified = simplify(merged, { tolerance: 0.008, highQuality: false });
+    } catch {
+      simplified = merged;
+    }
 
-    const buffered = bufferPolygon(polygon, 0.05);
+    const geom = simplified.geometry || simplified;
+    if (!geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) continue;
+
+    const coords = JSON.parse(JSON.stringify(geom.coordinates));
+    roundCoords(coords, 5);
 
     features.push({
       type: "Feature",
       geometry: {
-        type: "Polygon",
-        coordinates: buffered,
+        type: geom.type as "Polygon" | "MultiPolygon",
+        coordinates: coords,
       },
       properties: {
         duration: maxTime,
@@ -75,68 +127,13 @@ export function computeIsochrones(
   };
 }
 
-function convexHull(points: Array<[number, number]>): Array<[number, number]> | null {
-  if (points.length < 3) return null;
-
-  const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-
-  const cross = (o: [number, number], a: [number, number], b: [number, number]): number => {
-    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  };
-
-  const lower: Array<[number, number]> = [];
-  for (const p of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-      lower.pop();
-    }
-    lower.push(p);
+function roundCoords(coords: any, decimals: number): void {
+  if (typeof coords[0] === "number") {
+    coords[0] = parseFloat(coords[0].toFixed(decimals));
+    coords[1] = parseFloat(coords[1].toFixed(decimals));
+  } else if (Array.isArray(coords)) {
+    for (const c of coords) roundCoords(c, decimals);
   }
-
-  const upper: Array<[number, number]> = [];
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const p = sorted[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-      upper.pop();
-    }
-    upper.push(p);
-  }
-
-  lower.pop();
-  upper.pop();
-  return [...lower, ...upper];
-}
-
-function bufferPolygon(ring: Array<[number, number]>, distanceDeg: number): number[][][] {
-  if (ring.length < 3) return [ring];
-
-  const buffered: Array<[number, number]> = [];
-
-  for (let i = 0; i < ring.length; i++) {
-    const prev = ring[(i - 1 + ring.length) % ring.length];
-    const curr = ring[i];
-    const next = ring[(i + 1) % ring.length];
-
-    const ax = curr[0] - prev[0];
-    const ay = curr[1] - prev[1];
-    const len1 = Math.sqrt(ax * ax + ay * ay);
-    const nx1 = len1 > 0 ? -ay / len1 : 0;
-    const ny1 = len1 > 0 ? ax / len1 : 0;
-
-    const bx = next[0] - curr[0];
-    const by = next[1] - curr[1];
-    const len2 = Math.sqrt(bx * bx + by * by);
-    const nx2 = len2 > 0 ? -by / len2 : 0;
-    const ny2 = len2 > 0 ? bx / len2 : 0;
-
-    const mx = nx1 + nx2;
-    const my = ny1 + ny2;
-    const lenM = Math.sqrt(mx * mx + my * my);
-    const factor = lenM > 0 ? distanceDeg / lenM : 1;
-
-    buffered.push([curr[0] + mx * factor, curr[1] + my * factor]);
-  }
-
-  return [buffered];
 }
 
 function getColorForBand(duration: number): string {

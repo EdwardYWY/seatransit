@@ -33,7 +33,12 @@ async function main() {
       duration: 1000,
     });
 
-    currentIsochrones = await loadIsochrones(station.id);
+    try {
+      currentIsochrones = await loadIsochrones(station.id);
+    } catch {
+      currentIsochrones = { type: "FeatureCollection", features: [] };
+    }
+
     loadingEl.style.display = "none";
 
     if (currentIsochrones.features.length === 0) {
