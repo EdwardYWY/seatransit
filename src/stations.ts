@@ -9,11 +9,11 @@ export function addStationMarkers(
   const markers: maplibregl.Marker[] = [];
 
   for (const station of stations) {
-    const color = station.country === "MY" ? "#4CAF50" : "#2196F3";
+    const color = station.country === "MY" ? "#2ECC71" : "#3498DB";
     const el = document.createElement("div");
     el.className = "station-marker";
-    el.style.width = "8px";
-    el.style.height = "8px";
+    el.style.width = "12px";
+    el.style.height = "12px";
     el.style.borderRadius = "50%";
     el.style.backgroundColor = color;
     el.style.border = "2px solid white";
@@ -39,33 +39,44 @@ export function setupStationSearch(
   onSelect: (station: StationData) => void
 ): void {
   const input = document.getElementById("search-input") as HTMLInputElement;
-  const results = document.getElementById("search-results") as HTMLUListElement;
+  const results = document.getElementById("search-results") as HTMLDivElement;
   if (!input || !results) return;
 
   input.addEventListener("input", () => {
     const q = input.value.toLowerCase().trim();
     results.innerHTML = "";
-    if (q.length < 1) return;
+    if (q.length < 1) {
+      results.classList.remove("visible");
+      return;
+    }
 
     const matches = stations
       .filter((s) => s.name.toLowerCase().includes(q))
       .slice(0, 10);
 
+    if (matches.length === 0) {
+      results.classList.remove("visible");
+      return;
+    }
+
     for (const station of matches) {
-      const li = document.createElement("li");
-      li.textContent = `${station.name} (${station.country})`;
-      li.addEventListener("click", () => {
+      const div = document.createElement("div");
+      div.textContent = `${station.name} (${station.country})`;
+      div.addEventListener("click", () => {
         onSelect(station);
         results.innerHTML = "";
+        results.classList.remove("visible");
         input.value = station.name;
       });
-      results.appendChild(li);
+      results.appendChild(div);
     }
+    results.classList.add("visible");
   });
 
   document.addEventListener("click", (e) => {
     if (!results.contains(e.target as Node) && e.target !== input) {
       results.innerHTML = "";
+      results.classList.remove("visible");
     }
   });
 }

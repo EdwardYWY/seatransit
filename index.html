@@ -1,30 +1,41 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SEA Transit — How far can you go by train?</title>
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
-  </head>
-  <body>
-    <div id="app">
-      <div id="search-container">
-        <input id="search-input" type="text" placeholder="Search stations..." autocomplete="off" />
-        <ul id="search-results"></ul>
-      </div>
-      <div id="map"></div>
-      <div id="controls">
-        <div id="slider-container">
-          <span id="slider-label">0h</span>
-          <input id="time-slider" type="range" min="0" max="10" value="4" step="1" />
-          <span id="slider-max-label">48h</span>
-        </div>
-        <div id="info">
-          <span id="station-name">KL Sentral</span>
-          <span id="station-count"></span>
-        </div>
-      </div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEA Transit — How far can you go by train?</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚆</text></svg>">
+</head>
+<body>
+  <div id="map"></div>
+  <div id="loading">Loading data...</div>
+  <div id="error"></div>
+  <div id="search-overlay">
+    <input id="search-input" type="text" placeholder="Search stations..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="legend">
+    <div class="row"><span class="swatch" style="background:#FFD700"></span> 0-1h</div>
+    <div class="row"><span class="swatch" style="background:#FF8C00"></span> 1-2h</div>
+    <div class="row"><span class="swatch" style="background:#FF6600"></span> 2-3h</div>
+    <div class="row"><span class="swatch" style="background:#FF4500"></span> 3-4h</div>
+    <div class="row"><span class="swatch" style="background:#DC143C"></span> 4-6h</div>
+    <div class="row"><span class="swatch" style="background:#8B0000"></span> 6-8h</div>
+    <div class="row"><span class="swatch" style="background:#4B0082"></span> 8-12h</div>
+    <div class="row"><span class="swatch" style="background:#2E0854"></span> 12-24h</div>
+    <div class="row"><span class="swatch" style="background:#1A0033"></span> 24-36h</div>
+    <div class="row"><span class="swatch" style="background:#0D001A"></span> 36-48h</div>
+  </div>
+  <div id="slider-overlay">
+    <div id="slider-value">Reachable in 0h 0m — 1 station</div>
+    <input type="range" id="time-slider" min="0" max="9" value="0" step="1">
+    <div id="slider-labels">
+      <span>0h</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span>
+      <span>6h</span><span>8h</span><span>12h</span><span>24h</span><span>48h</span>
     </div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+  </div>
+  <div id="info-overlay">KL Sentral</div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
 </html>

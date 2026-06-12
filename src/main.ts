@@ -3,7 +3,7 @@ import maplibregl from "maplibre-gl";
 import { createMap } from "./map";
 import { addStationMarkers, setupStationSearch } from "./stations";
 import { renderIsochrones, removeIsochrones } from "./isochrones";
-import { setupSlider, getTimeBandValue } from "./slider";
+import { setupSlider, updateSliderValue, formatDuration, getTimeBandValue } from "./slider";
 import {
   loadStations,
   loadIsochrones,
@@ -12,19 +12,20 @@ import {
 } from "./data-loader";
 
 async function main() {
+  const loadingEl = document.getElementById("loading")!;
+  const errorEl = document.getElementById("error")!;
+
   const mapContainer = document.getElementById("map")!;
   const map = createMap(mapContainer);
 
   let currentStation: StationData;
   let currentIsochrones: IsochroneCollection | null = null;
-
-  const stationNameEl = document.getElementById("station-name")!;
-  const stationCountEl = document.getElementById("station-count")!;
+  let stationCountCache: Map<number, number> = new Map();
 
   async function loadStation(station: StationData) {
     currentStation = station;
-    stationNameEl.textContent = station.name;
-    stationCountEl.textContent = "Loading...";
+    loadingEl.style.display = "block";
+    loadingEl.textContent = "Loading isochrones...";
 
     map.flyTo({
       center: [station.lng, station.lat],
@@ -33,9 +34,16 @@ async function main() {
     });
 
     currentIsochrones = await loadIsochrones(station.id);
+    loadingEl.style.display = "none";
+
     if (currentIsochrones.features.length === 0) {
-      stationCountEl.textContent = "No isochrone data available";
+      updateSliderValue(`${station.name} — No isochrone data`);
       return;
+    }
+
+    stationCountCache.clear();
+    for (const f of currentIsochrones.features) {
+      stationCountCache.set(f.properties.duration, f.properties.stationCount);
     }
 
     const slider = document.getElementById("time-slider") as HTMLInputElement;
@@ -44,33 +52,42 @@ async function main() {
 
     renderIsochrones(map, currentIsochrones, maxMinutes);
 
-    const lastFeature = currentIsochrones.features[currentIsochrones.features.length - 1];
-    stationCountEl.textContent = `${lastFeature.properties.stationCount} stations reachable`;
+    const count = stationCountCache.get(maxMinutes) || 0;
+    updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
   }
 
   map.on("load", async () => {
-    const stations = await loadStations();
+    try {
+      const stations = await loadStations();
+      loadingEl.style.display = "none";
 
-    addStationMarkers(map, stations, async (station) => {
-      if (currentStation?.id !== station.id) {
+      addStationMarkers(map, stations, async (station) => {
+        if (currentStation?.id !== station.id) {
+          removeIsochrones(map);
+          await loadStation(station);
+        }
+      });
+
+      setupStationSearch(stations, async (station) => {
         removeIsochrones(map);
         await loadStation(station);
-      }
-    });
+      });
 
-    setupStationSearch(stations, async (station) => {
-      removeIsochrones(map);
-      await loadStation(station);
-    });
+      setupSlider((maxMinutes, bandIndex) => {
+        if (currentIsochrones) {
+          renderIsochrones(map, currentIsochrones, maxMinutes);
+          const count = stationCountCache.get(maxMinutes) || 0;
+          updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
+        }
+      });
 
-    setupSlider(async (maxMinutes, _bandIndex) => {
-      if (currentIsochrones) {
-        renderIsochrones(map, currentIsochrones, maxMinutes);
-      }
-    });
-
-    const klSentral = stations.find((s) => s.id === "ktm:19100") || stations[0];
-    await loadStation(klSentral);
+      const klSentral = stations.find((s) => s.id === "ktm:19100") || stations[0];
+      await loadStation(klSentral);
+    } catch (err) {
+      loadingEl.style.display = "none";
+      errorEl.textContent = `Failed to load data: ${err instanceof Error ? err.message : String(err)}`;
+      errorEl.classList.add("visible");
+    }
   });
 }
 

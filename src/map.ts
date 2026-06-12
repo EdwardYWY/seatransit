@@ -31,6 +31,7 @@ export function createMap(container: HTMLElement): maplibregl.Map {
   });
 
   map.addControl(new maplibregl.NavigationControl(), "top-right");
+  map.addControl(new maplibregl.ScaleControl(), "bottom-right");
 
   return map;
 }

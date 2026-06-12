@@ -10,22 +10,32 @@ export function getTimeLabel(minutes: number): string {
   return `${h}h`;
 }
 
+export function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 export function setupSlider(onChange: (bandMinutes: number, bandIndex: number) => void): void {
   const slider = document.getElementById("time-slider") as HTMLInputElement;
-  const label = document.getElementById("slider-label") as HTMLSpanElement;
-  if (!slider || !label) return;
-
-  slider.min = "0";
-  slider.max = String(TIME_BANDS.length - 1);
-  slider.step = "1";
+  const valueEl = document.getElementById("slider-value") as HTMLDivElement;
+  if (!slider || !valueEl) return;
 
   const update = () => {
     const idx = parseInt(slider.value);
     const minutes = getTimeBandValue(idx);
-    label.textContent = getTimeLabel(minutes);
+    const label = getTimeLabel(minutes);
+    slider.value = String(idx);
     onChange(minutes, idx);
   };
 
   slider.addEventListener("input", update);
   update();
+}
+
+export function updateSliderValue(text: string): void {
+  const valueEl = document.getElementById("slider-value") as HTMLDivElement;
+  if (valueEl) valueEl.textContent = text;
 }

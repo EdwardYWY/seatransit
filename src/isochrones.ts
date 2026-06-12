@@ -8,30 +8,19 @@ export function renderIsochrones(
 ): void {
   removeIsochrones(map);
 
-  const sourceId = "isochrones";
-  const layerIds: string[] = [];
-
-  map.addSource(sourceId, {
-    type: "geojson",
-    data: {
-      type: "FeatureCollection",
-      features: [],
-    },
-  });
-
   const filtered = isochrones.features.filter(
     (f) => f.properties.duration <= maxBand
   );
 
   filtered.sort((a, b) => a.properties.duration - b.properties.duration);
 
-  for (const feature of filtered) {
+  for (let i = 0; i < filtered.length; i++) {
+    const feature = filtered[i];
     const duration = feature.properties.duration;
     const color = feature.properties.fillColor;
     const layerId = `isochrone-${duration}`;
-    layerIds.push(layerId);
-
     const subSourceId = `isochrone-src-${duration}`;
+
     map.addSource(subSourceId, {
       type: "geojson",
       data: feature,
@@ -43,21 +32,21 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": 0.3,
+        "fill-opacity": 0.35 - (i * 0.02),
+      },
+    });
+
+    map.addLayer({
+      id: `${layerId}-border`,
+      type: "line",
+      source: subSourceId,
+      paint: {
+        "line-color": color,
+        "line-opacity": 0.6,
+        "line-width": i === filtered.length - 1 ? 2 : 1.5,
       },
     });
   }
-
-  map.addLayer({
-    id: "isochrone-borders",
-    type: "line",
-    source: sourceId,
-    paint: {
-      "line-color": "#ffffff",
-      "line-opacity": 0.5,
-      "line-width": 1,
-    },
-  });
 }
 
 export function removeIsochrones(map: maplibregl.Map): void {
