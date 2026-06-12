@@ -72,16 +72,14 @@ export function computeIsochrones(
       continue;
     }
 
-    const bufferKm = Math.min(maxTime * 0.08, 80);
-
-    const pts = reachableStations.map((s) =>
-      point([s.lng, s.lat], { id: s.id })
-    );
-
     let merged: any = null;
-    for (const pt of pts) {
+    for (const s of reachableStations) {
+      const travelTime = distances.get(s.id)!;
+      const remainingBudget = maxTime - travelTime;
+      const bufKm = Math.min(Math.max(remainingBudget * 0.15, 2), 100);
       try {
-        const buf = buffer(pt, bufferKm, { units: "kilometers", steps: 24 });
+        const pt = point([s.lng, s.lat]);
+        const buf = buffer(pt, bufKm, { units: "kilometers", steps: 24 });
         if (!merged) {
           merged = buf;
         } else if (buf) {

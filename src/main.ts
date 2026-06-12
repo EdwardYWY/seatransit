@@ -59,6 +59,7 @@ async function main() {
 
     const count = stationCountCache.get(maxMinutes) || 0;
     updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
+    document.getElementById("info-overlay")!.textContent = station.name;
   }
 
   map.on("load", async () => {
