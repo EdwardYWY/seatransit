@@ -9,7 +9,7 @@ export function createMap(container: HTMLElement): maplibregl.Map {
         osm: {
           type: "raster",
           tiles: [
-            "https://tiles.openfreemap.org/planet/{z}/{x}/{y}.png",
+            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
           ],
           tileSize: 256,
           attribution:
