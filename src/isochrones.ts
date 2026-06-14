@@ -32,7 +32,7 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": 0.35 - (i * 0.02),
+        "fill-opacity": Math.max(0.08, 0.35 - (i * 0.02)),
       },
     });
 

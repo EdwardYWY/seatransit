@@ -28,11 +28,21 @@ export function setupSlider(onChange: (bandMinutes: number, bandIndex: number) =
     const minutes = getTimeBandValue(idx);
     const label = getTimeLabel(minutes);
     slider.value = String(idx);
+    updateLegendActive(idx);
     onChange(minutes, idx);
   };
 
   slider.addEventListener("input", update);
   update();
+}
+
+export function updateLegendActive(bandIndex: number): void {
+  const legend = document.getElementById("legend");
+  if (!legend) return;
+  legend.querySelectorAll(".row").forEach((row) => {
+    const rowBand = parseInt((row as HTMLElement).dataset.band || "");
+    row.classList.toggle("active", rowBand === bandIndex);
+  });
 }
 
 export function updateSliderValue(text: string): void {
