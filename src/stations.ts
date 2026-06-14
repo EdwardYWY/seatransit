@@ -5,33 +5,55 @@ export function addStationMarkers(
   map: maplibregl.Map,
   stations: StationData[],
   onClick: (station: StationData) => void
-): maplibregl.Marker[] {
-  const markers: maplibregl.Marker[] = [];
+): void {
+  const geojson: GeoJSON.FeatureCollection = {
+    type: "FeatureCollection",
+    features: stations.map((s) => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [s.lng, s.lat],
+      },
+      properties: {
+        id: s.id,
+        name: s.name,
+        country: s.country,
+        color: s.country === "MY" ? "#2ECC71" : "#3498DB",
+      },
+    })),
+  };
 
-  for (const station of stations) {
-    const color = station.country === "MY" ? "#2ECC71" : "#3498DB";
-    const el = document.createElement("div");
-    el.className = "station-marker";
-    el.style.width = "12px";
-    el.style.height = "12px";
-    el.style.borderRadius = "50%";
-    el.style.backgroundColor = color;
-    el.style.border = "2px solid white";
-    el.style.cursor = "pointer";
-    el.style.boxShadow = "0 1px 3px rgba(0,0,0,0.4)";
-    el.title = station.name;
+  map.addSource("stations", {
+    type: "geojson",
+    data: geojson,
+  });
 
-    const marker = new maplibregl.Marker({ element: el })
-      .setLngLat([station.lng, station.lat])
-      .setPopup(new maplibregl.Popup({ offset: 25 }).setText(station.name))
-      .addTo(map);
+  map.addLayer({
+    id: "station-circles",
+    type: "circle",
+    source: "stations",
+    paint: {
+      "circle-radius": 6,
+      "circle-color": ["get", "color"],
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
 
-    el.addEventListener("click", () => onClick(station));
+  map.on("click", "station-circles", (e) => {
+    if (!e.features?.[0]) return;
+    const props = e.features[0].properties;
+    if (!props) return;
+    const station = stations.find((s) => s.id === props.id);
+    if (station) onClick(station);
+  });
 
-    markers.push(marker);
-  }
-
-  return markers;
+  map.on("mouseenter", "station-circles", () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", "station-circles", () => {
+    map.getCanvas().style.cursor = "";
+  });
 }
 
 export function setupStationSearch(

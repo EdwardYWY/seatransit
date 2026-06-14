@@ -79,7 +79,7 @@ export function computeIsochrones(
       const bufKm = Math.min(Math.max(remainingBudget * 0.15, 2), 100);
       try {
         const pt = point([s.lng, s.lat]);
-        const buf = buffer(pt, bufKm, { units: "kilometers", steps: 24 });
+        const buf = buffer(pt, bufKm, { units: "kilometers", steps: 64 });
         if (!merged) {
           merged = buf;
         } else if (buf) {
@@ -94,7 +94,7 @@ export function computeIsochrones(
 
     let simplified: any;
     try {
-      simplified = simplify(merged, { tolerance: 0.008, highQuality: false });
+      simplified = simplify(merged, { tolerance: 0.003, highQuality: true });
     } catch {
       simplified = merged;
     }
