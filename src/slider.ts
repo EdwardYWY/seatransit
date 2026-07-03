@@ -1,10 +1,12 @@
-const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
+const TIME_BANDS = [0, 60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
 
 export function getTimeBandValue(index: number): number {
-  return TIME_BANDS[Math.min(index, TIME_BANDS.length - 1)] || TIME_BANDS[0];
+  const safeIndex = Math.max(0, Math.min(index, TIME_BANDS.length - 1));
+  return TIME_BANDS[safeIndex] ?? 0;
 }
 
 export function getTimeLabel(minutes: number): string {
+  if (minutes === 0) return "0h";
   if (minutes < 60) return `${minutes}m`;
   const h = Math.round(minutes / 60);
   return `${h}h`;
@@ -20,14 +22,19 @@ export function formatDuration(minutes: number): string {
 
 export function setupSlider(onChange: (bandMinutes: number, bandIndex: number) => void): void {
   const slider = document.getElementById("time-slider") as HTMLInputElement;
-  const valueEl = document.getElementById("slider-value") as HTMLDivElement;
-  if (!slider || !valueEl) return;
+  if (!slider) return;
+
+  const updateTrack = () => {
+    const max = Number(slider.max) || TIME_BANDS.length - 1;
+    const value = Number(slider.value) || 0;
+    const pct = (value / max) * 100;
+    slider.style.setProperty("--slider-progress", `${pct}%`);
+  };
 
   const update = () => {
     const idx = parseInt(slider.value);
     const minutes = getTimeBandValue(idx);
-    const label = getTimeLabel(minutes);
-    slider.value = String(idx);
+    updateTrack();
     updateLegendActive(idx);
     onChange(minutes, idx);
   };

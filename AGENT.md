@@ -1,474 +1,212 @@
-# Implementation Prompt — seatransit
+# AGENT.md — seatransit current state
 
-Run this agent at `D:\Documents\Code\seatransit\` with the **general** agent type. It will self-validate using agent-browser and iterate until everything works.
+This file is for coding agents working on this repository. The old implementation prompt is obsolete: the project is no longer a blank scaffold task. Treat this repo as an existing, partially working MVP that needs fixing, validation, and enhancement.
 
----
+## Project summary
 
-You have a complete implementation plan in `IMPLEMENTATION.md`. Your job: implement this project from scratch, self-validate with agent-browser, and iterate until the web app works correctly from 0h to 48h with zero console errors.
+`seatransit` is a static Vite + TypeScript + MapLibre web app showing rail-reachability isochrones around Malaysia/Singapore. It currently focuses on KL Sentral as the default origin, with early support for per-station origins when a matching precomputed GeoJSON file exists.
 
-## Git Setup (do this first)
+The app is deployable as static files: data is generated into `public/data/`, Vite copies it into `dist/data/`, and the browser only fetches static JSON plus map tiles.
 
-```bash
-cd D:\Documents\Code\seatransit
-git init
-git add .
-git commit -m "init: project scaffold"
-git remote add origin https://github.com/EdwardYWY/seatransit.git
-git branch -M main
-git push -u origin main
-```
+## Current repo state (2026-07-03)
 
-## Implementation Task
+### What exists
 
-Create a working Chronotrains-like interactive map for Malaysia/Singapore trains. The data pipeline must parse GTFS feeds from 3 sources (KTM, Rapid KL, Singapore MRT), build a station graph, compute isochrone polygons via Dijkstra BFS, and export static JSON. The frontend must render a MapLibre GL map with isochrone overlays, time slider (0h to 48h), and station search — all as a static site deployable to GitHub Pages.
+- Frontend source is in `src/`:
+  - `src/main.ts` wires map, stations, search, slider, and station loading.
+  - `src/map.ts` creates a MapLibre map using OpenStreetMap raster tiles, not OpenFreeMap.
+  - `src/stations.ts` renders DOM-based station markers and implements search.
+  - `src/isochrones.ts` removes/re-adds MapLibre fill/line layers for visible bands.
+  - `src/slider.ts` uses a discrete 10-position slider for time bands.
+  - `src/data-loader.ts` fetches static JSON from `data/` and maps station IDs to filenames by replacing `:` with `-`.
+  - `src/style.css` contains all UI styling.
+- Data pipeline source is in `scripts/`:
+  - `scripts/build-data.ts` orchestrates download/parse/fallback/sample data, graph build, station JSON, one default isochrone, and all-pairs-ish travel times.
+  - `scripts/gtfs-parser.ts` tries to download and parse GTFS zips.
+  - `scripts/graph.ts` builds an undirected weighted graph, adds walkable edges, transfer-like same-name edges, and Malaysia/Singapore border edges.
+  - `scripts/isochrone-compute.ts` runs Dijkstra and builds Turf buffer/union isochrones.
+  - `scripts/utils.ts` has shared types, agency URLs, CSV parsing, distance, and time helpers.
+- Static generated data currently exists in `public/data/`:
+  - `stations.json`
+  - `station-lookup.json`
+  - `ktm-19100.json` (default KL Sentral isochrones)
+  - `travel-times.json`
+- `npm run build` currently succeeds, with a Vite chunk-size warning because MapLibre/Turf are bundled.
+- `npm run build-data` currently completes by falling back to sample/demo data.
 
-## Steps
+### Important current behavior
 
-### 1. Scaffold Project
-- `npm create vite@latest . -- --template vanilla-ts` (overwrite existing files)
-- `npm install maplibre-gl @turf/turf gtfs-utils`
-- `npm install -D typescript gh-pages tsx vite @types/node`
-- Set `vite.config.ts` with `base: './'` and `build.outDir: 'dist'`
-- Create directory structure: `scripts/`, `src/`, `public/data/`
-- Add scripts to package.json: `"build-data": "tsx scripts/build-data.ts"`, `"deploy": "npm run build-data && npm run build && gh-pages -d dist"`
-- Commit: `git add . && git commit -m "feat: project scaffold" && git push`
+- Default origin is `ktm:19100` / KL Sentral.
+- Default isochrone filename is `public/data/ktm-19100.json`, not `kl-sentral.json`.
+- Clicking or searching another station attempts to load `public/data/<safe-station-id>.json` (example: `rapidkl-KJ15.json`). Most stations do **not** have matching isochrone files yet, so the UI shows “No isochrone data”.
+- The slider is discrete:
+  - HTML range: `min="0" max="9" step="1"`
+  - indexes map to `[60,120,180,240,360,480,720,1440,2160,2880]`
+  - there is no real 0-minute state.
+- `travel-times.json` is generated for every origin, but the frontend currently uses station counts stored in each isochrone feature instead of reading `travel-times.json` for counts.
+- Map tiles use `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. Previous OpenFreeMap usage was changed because it returned empty tiles during fixing.
 
-### 2. Data Pipeline (`scripts/`)
-All scripts are Node.js/TypeScript that run locally via `tsx`.
+## Data reality and limitations
 
-#### `scripts/gtfs-parser.ts`
-Export functions:
-```typescript
-interface Station { id: string; name: string; lat: number; lng: number; country: string; agency: string; }
-interface Edge { fromId: string; toId: string; durationMinutes: number; source: string; }
-interface ParseResult { stations: Station[]; edges: Edge[]; }
-async function parseKTM(): Promise<ParseResult>
-async function parseRapidKL(): Promise<ParseResult>
-async function parseSingaporeMRT(): Promise<ParseResult>
-```
+The GTFS pipeline is not production-grade yet.
 
-Implementation:
-- Download GTFS zips from:
-  - KTM: `https://api.data.gov.my/gtfs-static/ktmb`
-  - Rapid KL: `https://api.data.gov.my/gtfs-static/prasarana?category=rapid-rail-kl`
-  - SG MRT: `https://github.com/thecrapone/singapore-gtfs-2026/raw/main/singapore-gtfs.zip`
-- Parse stops.txt -> Station[]
-- Parse trips.txt + stop_times.txt: for each trip, iterate consecutive stops by stop_sequence, compute duration = arrival_{j} - departure_{i} in minutes
-- For Singapore: filter to route_type=1 only (ignore bus routes)
-- For Rapid KL: it uses frequencies.txt (headway-based). Read stop_times for each trip, average station-to-station times across trips on same route
-- BOM handling: GTFS CSVs may start with a UTF-8 BOM (`\ufeff`). Strip it from the first line before parsing
-- Time parsing: stop_times may use hours > 24 (e.g. `25:30:00`). Parse as `hours * 60 + minutes` (e.g. 25*60+30 = 1530 minutes from midnight)
+Observed when running `npm run build-data`:
 
-#### `scripts/graph.ts`
-```typescript
-type Graph = Map<string, Map<string, number>>;
-function buildGraph(stations: Station[], edges: Edge[]): Graph
-function addWalkableEdges(graph: Graph, stations: Station[], maxDistanceKm: number, speedKmPerMin: number): void
-function addTransferEdges(graph: Graph, stations: Station[], transfers: {fromId: string, toId: string, minutes: number}[]): void
-function dijkstra(graph: Graph, startId: string, maxDuration: number, maxHops: number, interchangeTime: number): Map<string, number>
-```
+- KTM download returns a zip file, but parser reports missing required GTFS files.
+- Rapid KL download returns a zip file, but parser reports missing required GTFS files.
+- Singapore MRT URL in `scripts/utils.ts` currently returns 404:
+  - `https://storage.googleapis.com/sg-mrt-gtfs/gtfs-static.zip`
+- Because no agency data is parsed, `scripts/build-data.ts` falls back to embedded sample/demo data.
+- Current sample output after `build-data` is about:
+  - 113 stations
+  - 94 MY stations, 19 SG stations
+  - 10 KL Sentral isochrone bands
+  - 113 origins in `travel-times.json`
+- Sample SG connectivity is incomplete/fragile: KL Sentral isochrone station counts plateau at 93 stations, so not all sample stations are reachable within 48h under current graph/hop constraints.
 
-Walkable edges: stations within 3km at 9 km/h speed (0.15 km/min)
-Transfer edges:
-- KTM Woodlands (37600) <-> SG Woodlands MRT (NS9-TE2): 20 min walk
-- KTM KL Sentral (19100) <-> Rapid KL KL Sentral (use Rapid KL stop IDs that match "KL Sentral"): 5 min transfer
-- Same-station KTM <-> Rapid KL where station names overlap: 15 min transfer
-- JB Sentral (37500) <-> Woodlands (37600): 5 min (Shuttle Tebrau)
+Do not describe the project as using authoritative live GTFS data until the parser/download issues are fixed and validated.
 
-Dijkstra implementation:
-- Standard priority-queue BFS
-- Track visited stations to avoid cycles
-- Track hop count per path, stop expanding when maxHops exceeded
-- Return Map<stationId, shortestDuration>
-
-#### `scripts/isochrone-compute.ts`
-```typescript
-function computeIsochrones(
-  startStationId: string,
-  graph: Graph,
-  stations: Station[],
-  timeBands: number[],
-  walkSpeedKmPerMin: number
-): GeoJSON.FeatureCollection
-```
-
-Algorithm (adapt from Chronotrains' MIT code):
-1. Run dijkstra from start station to get all reachable stations with travel times
-2. For each time band (60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880):
-   a. Filter stations with travel_time <= band
-   b. Buffer each station point by `(band - travel_time) * walkSpeedKmPerMin` km using @turf/buffer
-   c. Union all buffers into one polygon using @turf/union
-     - Handle single-input union: if only one buffer, use it directly
-     - Handle multi-polygon results from union
-   d. Simplify polygon with tolerance 0.005
-   e. Round coordinates to 4 decimal places
-3. Return GeoJSON FeatureCollection with each feature having `{duration: minutes}` property
-
-Parameters: maxDuration=2880 (48h), interchangeTime=20min, maxHops=12, walkSpeed=0.15 km/min
-
-#### `scripts/build-data.ts` (orchestrator)
-1. Parse all 3 GTFS sources
-2. Merge stations (deduplicate by id — KTM ids are numeric, Rapid KL ids start with route code, SG ids start with line code; they won't overlap)
-3. Build graph from merged stations + edges
-4. Add walkable edges
-5. Add transfer edges
-6. Compute isochrones from KL Sentral (use station name matching to find "KL SENTRAL" or "KL Sentral" in KTM stations)
-7. Compute travel times from KL Sentral to all stations
-8. Write output files to `public/data/`:
-   - `stations.json`: Station[] (all stations, sorted by name)
-   - `station-lookup.json`: {name_lowercase: station_id} (for search autocomplete)
-   - `kl-sentral.json`: GeoJSON FeatureCollection with isochrones
-   - `travel-times.json`: {from_id: {to_id: minutes, ...}, ...}
-
-Error handling: if a GTFS download fails, log and continue with partial data. Validate that station IDs match between stops.txt and stop_times.txt. Wrap @turf operations in try-catch to handle edge case geometries.
-
-### 3. Frontend (`src/`)
-All files are TypeScript that Vite bundles into `dist/`.
-
-#### `src/map.ts`
-- Initialize MapLibre GL with OpenFreeMap tiles: `https://tiles.openfreemap.org/styles/liberty` (or fallback to `https://demotiles.maplibre.org/style.json`)
-- Center on SE Asia: [102.0, 3.5], zoom 6
-- Add navigation controls (zoom + compass)
-- Add scale control
-
-#### `src/data-loader.ts`
-- Fetch `stations.json`, `kl-sentral.json`, `station-lookup.json`, `travel-times.json` from `./data/` (relative path)
-- Return typed objects
-- Cache in memory (module-level variables)
-- Handle fetch errors with descriptive messages
-
-#### `src/stations.ts`
-- On load: fetch station data, add circle markers for all stations
-- Marker color: green (#2ECC71) for Malaysia, blue (#3498DB) for Singapore
-- Marker size: 6px radius, white stroke 2px
-- On click: highlight selected station (pulsing animation), center map on it
-- Search: input field with autocomplete dropdown
-  - Match typed text against station-lookup.json keys (case-insensitive prefix match)
-  - Show top 10 matches in dropdown
-  - On select: fly-to station coordinates with smooth animation
-
-#### `src/isochrones.ts`
-- After loading kl-sentral.json, add each isochrone polygon as a MapLibre fill layer
-- Layer ID format: `isochrone-{duration}`
-- Layer config: fill opacity 0.25, line width 1.5, line opacity 0.5, line color matching fill
-- Color scheme by duration:
-  - 0-1h: #FFD700 (gold)
-  - 1-2h: #FF8C00 (orange)
-  - 2-3h: #FF6600
-  - 3-4h: #FF4500 (red-orange)
-  - 4-6h: #DC143C (crimson)
-  - 6-8h: #8B0000 (dark red)
-  - 8-12h: #4B0082 (indigo)
-  - 12-24h: #2E0854 (deep purple)
-  - 24-36h: #1A0033 (very dark purple)
-  - 36-48h: #0D001A (near black)
-- Add a legend UI element showing color ↔ time band mapping
-
-#### `src/slider.ts`
-- Create horizontal range input (input type="range") with values 0 to 2880 (minutes), step 30
-- Display labels at: 0h, 1h, 2h, 3h, 4h, 6h, 8h, 12h, 18h, 24h, 36h, 48h
-- Style slider to be wide, with visible tick marks at label positions
-- On input change: update MapLibre layers — show all isochrone bands where band <= current slider value, hide bands where band > slider value
-- Display text below slider: "Reachable in Xh Ym — N stations"
-- Calculate reachable station count from travel-times.json
-
-#### `src/main.ts`
-- Entry point: initialize map, load data, render stations + isochrones, wire up slider
-- Show loading spinner while data loads
-- Show error message overlay if data files are missing or malformed
-- Handle empty states gracefully (no stations found, no isochrones)
-
-### 4. `index.html`
-Single HTML page with full-screen map.
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>seatransit — How far can you go by train from KL?</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚆</text></svg>">
-  <style>
-    /* Reset */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
-    
-    /* Map */
-    #map { width: 100vw; height: 100vh; }
-    
-    /* Search overlay - top center */
-    #search-overlay {
-      position: absolute;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      width: min(400px, calc(100vw - 32px));
-    }
-    #search-overlay input {
-      width: 100%;
-      padding: 10px 16px;
-      border: none;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      font-size: 15px;
-      outline: none;
-    }
-    #search-results {
-      background: white;
-      border-radius: 0 0 8px 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      max-height: 240px;
-      overflow-y: auto;
-      display: none;
-    }
-    #search-results.visible { display: block; }
-    #search-results div {
-      padding: 8px 16px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    #search-results div:hover { background: #f0f0f0; }
-    
-    /* Slider overlay - bottom */
-    #slider-overlay {
-      position: absolute;
-      bottom: 32px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      background: rgba(255,255,255,0.95);
-      backdrop-filter: blur(8px);
-      border-radius: 12px;
-      padding: 16px 24px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-      width: min(600px, calc(100vw - 32px));
-    }
-    #slider-labels {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: #666;
-      margin-top: 4px;
-    }
-    #slider-value {
-      text-align: center;
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: #333;
-    }
-    input[type="range"] { width: 100%; }
-    
-    /* Info overlay - right side */
-    #info-overlay {
-      position: absolute;
-      bottom: 120px;
-      right: 16px;
-      z-index: 10;
-      background: rgba(255,255,255,0.9);
-      backdrop-filter: blur(8px);
-      border-radius: 8px;
-      padding: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      font-size: 12px;
-      color: #555;
-    }
-    
-    /* Legend */
-    #legend {
-      position: absolute;
-      bottom: 120px;
-      left: 16px;
-      z-index: 10;
-      background: rgba(255,255,255,0.9);
-      backdrop-filter: blur(8px);
-      border-radius: 8px;
-      padding: 10px 14px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      font-size: 12px;
-      color: #555;
-    }
-    #legend .row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 2px 0;
-    }
-    #legend .swatch {
-      width: 16px;
-      height: 4px;
-      border-radius: 2px;
-    }
-    
-    /* Loading */
-    #loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 20;
-      font-size: 18px;
-      color: #555;
-    }
-    
-    /* Error */
-    #error {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 20;
-      background: white;
-      padding: 24px;
-      border-radius: 12px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.2);
-      color: #c00;
-      text-align: center;
-      max-width: 400px;
-      display: none;
-    }
-    #error.visible { display: block; }
-    
-    /* Mobile adjustments */
-    @media (max-width: 640px) {
-      #slider-overlay { padding: 12px 16px; width: calc(100vw - 16px); bottom: 16px; }
-      #legend { display: none; }
-      #slider-labels { font-size: 9px; }
-    }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <div id="loading">Loading data...</div>
-  <div id="error"></div>
-  <div id="search-overlay">
-    <input id="search-input" type="text" placeholder="Search stations..." autocomplete="off">
-    <div id="search-results"></div>
-  </div>
-  <div id="legend">
-    <div class="row"><span class="swatch" style="background:#FFD700"></span> 0-1h</div>
-    <div class="row"><span class="swatch" style="background:#FF8C00"></span> 1-2h</div>
-    <div class="row"><span class="swatch" style="background:#FF6600"></span> 2-3h</div>
-    <div class="row"><span class="swatch" style="background:#FF4500"></span> 3-4h</div>
-    <div class="row"><span class="swatch" style="background:#DC143C"></span> 4-6h</div>
-    <div class="row"><span class="swatch" style="background:#8B0000"></span> 6-8h</div>
-    <div class="row"><span class="swatch" style="background:#4B0082"></span> 8-12h</div>
-    <div class="row"><span class="swatch" style="background:#2E0854"></span> 12-24h</div>
-    <div class="row"><span class="swatch" style="background:#1A0033"></span> 24-36h</div>
-    <div class="row"><span class="swatch" style="background:#0D001A"></span> 36-48h</div>
-  </div>
-  <div id="slider-overlay">
-    <div id="slider-value">Reachable in 0h 0m — 1 station</div>
-    <input type="range" id="time-slider" min="0" max="2880" value="0" step="30">
-    <div id="slider-labels">
-      <span>0h</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span>
-      <span>6h</span><span>8h</span><span>12h</span><span>18h</span><span>24h</span><span>36h</span><span>48h</span>
-    </div>
-  </div>
-  <div id="info-overlay">KL Sentral → ?? stations</div>
-  <script type="module" src="/src/main.ts"></script>
-</body>
-</html>
-```
-
-### 5. Build & Iterate
+## Commands
 
 ```bash
-npm run build-data     # Download GTFS -> parse -> compute -> export JSON
-npm run build          # Vite bundles frontend
-npm run preview        # Serve dist/ at localhost:4173
+npm install
+npm run build-data
+npm run build
+npm run dev
+npm run preview
 ```
 
-After each change, rebuild and preview. Use agent-browser to validate.
+Notes:
 
-### 6. Self-Validation with agent-browser
+- `npm run build-data` may overwrite files in `public/data/`.
+- `npm run build` copies `public/data/` into `dist/data/`.
+- `npm run deploy` runs `build-data`, `build`, and `gh-pages -d dist`.
 
-Use the **agent-browser** skill to load `http://localhost:4173` and validate:
+## Current build/validation status
 
-#### Validation Checklist
+Last checked:
 
-**6.1 Data pipeline integrity**
-- `public/data/stations.json` exists, is valid JSON, has at least 100 stations
-- Each station has `id`, `name`, `lat` (number), `lng` (number), `country` (string)
-- `public/data/kl-sentral.json` exists, is valid GeoJSON FeatureCollection
-- Has at least 3 features (time bands)
-- Each feature has `geometry` with `type: "Polygon"` or `"MultiPolygon"`
-- Each feature has `properties.duration` (number)
-- `public/data/station-lookup.json` exists, has station name entries
-- `public/data/travel-times.json` exists, has kl-sentral entries
-
-**6.2 Map loads visually**
-- Navigate to `http://localhost:4173`
-- Screenshot the page
-- Verify map tiles are rendering (visual: land/water visible)
-- Verify map is centered on Southeast Asia region
-- Verify navigation controls (zoom +/-) are present
-
-**6.3 Station markers render**
-- Wait for data to load (spinner disappears)
-- Green and blue circles visible on the map at station locations
-- Count: number of visible markers should roughly match stations in KL area
-
-**6.4 Isochrone polygons render**
-- Colored polygons visible radiating from KL Sentral area
-- Move slider to 4h — verify 4 colored bands visible (1h, 2h, 3h, 4h)
-- Move slider to 12h — more bands appear
-- Move slider to 48h (max) — all bands visible, reaches Singapore area
-
-**6.5 Slider interaction**
-- Default at 0h: only KL Sentral marker visible, no isochrones
-- Slide to 1h: 1h isochrone appears, text says "Reachable in 1h 0m"
-- Slide to 6h: 6 bands appear, reachable station count increases
-- Slide to 48h: all 10 bands, max reachable area, station count at max
-- Slide back to 0h: bands disappear (smooth transition)
-
-**6.6 Station search**
-- Click search input, type "kl"
-- Dropdown shows "KL Sentral" as option
-- Click "KL Sentral" — map flies to KL Sentral location
-- Type "woodlands" — "Woodlands" appears
-- Type nonexistent "zzzzz" — no results, dropdown empty or hidden
-
-**6.7 Legend visibility**
-- Legend box visible at bottom-left
-- Shows 10 color swatches matching time bands (0-1h through 36-48h)
-
-**6.8 Zero console errors**
-- Open browser DevTools Console
-- Verify: zero errors, zero failed network requests (no 404s)
-- Verify: no unhandled promises or TypeScript runtime errors
-- If errors exist, fix the source, rebuild (`npm run build-data && npm run build`), restart preview, re-validate
-
-**6.9 48h reachability**
-- Set slider to 2880 (48h)
-- Verify isochrones exist (polygons visible)
-- Verify reachable stations include SG MRT stations (Singapore MRT)
-
-**6.10 Mobile responsive**
-- Use agent-browser to resize to 375x812
-- Verify slider is still usable (not cut off)
-- Verify search input is still accessible
-- Verify legend may be hidden (expected on mobile)
-
-**6.11 Commit and push**
-- After all validations pass:
 ```bash
-git add .
-git commit -m "feat: working MVP with 48h isochrones"
-git push -u origin main
+npm run build      # passes, Vite chunk-size warning only
+npm run build-data # passes, but uses sample fallback data
 ```
 
-### Troubleshooting Common Issues
+Before claiming anything is fixed, validate in browser with `npm run dev` or `npm run preview` and inspect console/network failures.
 
-- **CORS errors with GTFS download**: data.gov.my's S3 bucket may have CORS restrictions. Use `node-fetch` in scripts (Node.js, not browser — no CORS issue)
-- **Map tiles not loading**: OpenFreeMap URLs may have changed. Fallback: `https://demotiles.maplibre.org/style.json` for development
-- **GTFS time parsing**: Some stop_times use hours > 24 (e.g. `24:05:00` = 1445 minutes). Parse as `h * 60 + m`
-- **GTFS BOM**: First line of CSV may start with `\ufeff`. Strip it before splitting columns
-- **@turf/union fails**: May throw on single input or invalid geometry. Wrap in try-catch: if only one buffer, use it directly; if union throws, skip that time band
-- **Large GeoJSON**: Simplify with tolerance 0.005 first, then 0.01 if >500KB
-- **Station ID overlap**: KTM uses numeric IDs, Rapid KL uses route-prefixed IDs, SG uses line-prefixed IDs. No overlap expected
-- **KTM KL Sentral ID**: KTM stop_id for KL Sentral is `19100`. Use this as the start station for isochrones
-- **SG MRT station names in stops.txt**: SG community GTFS stops.txt uses `location_type` column to distinguish parent stations (stations) from child platforms. Location_type=1 means parent station (this is what we want for markers)
-- **Rapid KL frequency-based**: The stop_times for Rapid KL only have one trip per direction per service day; the actual frequency is in frequencies.txt. Average travel time between consecutive stops across all trips to get representative edge durations
+## Priority direction from here
+
+### 1. Make the app honestly stable with sample/static data
+
+- Fix the slider semantics:
+  - Either make it a true minute slider with `0..2880`, or keep it discrete but label it honestly.
+  - Add a real 0h state where no isochrone bands display and count is 1 origin station.
+- Avoid console/network noise when selecting stations without precomputed isochrones.
+  - A 404 from `fetch(data/<station>.json)` is expected today but should not be treated as a scary runtime failure.
+  - Consider checking an index/manifest of available isochrones or precomputing all origins.
+- Improve selected-station UX:
+  - Marker highlighting/pulsing is not currently implemented despite earlier plans.
+  - Current station click opens popup and triggers origin load.
+- Make search behavior intentional:
+  - It currently matches `includes`, not prefix/autocomplete from `station-lookup.json`.
+  - `station-lookup.json` is generated but not used by frontend.
+
+### 2. Fix the GTFS ingestion pipeline
+
+This is the largest correctness gap.
+
+Things to inspect/fix:
+
+- The data.gov.my endpoints may return nested zip structures, redirects, or nonstandard filenames. Inspect `data/ktm.zip` and `data/rapidkl.zip` with Python/zip tooling before changing logic.
+- `parseGTFSZip` currently shells out to `python3`; on Windows this may not exist or may behave differently. Use a robust Node zip dependency or a reliable cross-platform approach.
+- `parseCSV` is too naive for GTFS CSV:
+  - no quoted-comma support
+  - no BOM stripping
+  - no multiline quoted-field handling
+- Singapore MRT source URL is stale. Find and replace with a current source, or commit a known-good static fixture with license/attribution.
+- Route filtering logic in `gtfs-parser.ts` has an unused `filteredTripIds` block; clean this up.
+- Station filtering for Singapore parent/child stops is not implemented.
+- Rapid KL frequencies are not actually used beyond detecting `frequencies` exists.
+- Add validation and clear diagnostics for parsed station/edge counts per agency.
+
+### 3. Decide the product scope for origins
+
+Current code suggests dynamic per-station origin selection, but data only has KL Sentral isochrones.
+
+Pick one direction:
+
+- **KL-only MVP**: simplify UI copy and behavior so selecting a station just flies/opens info, not “origin switching”. Keep only `ktm-19100.json`.
+- **All-origin MVP**: update `build-data.ts` to compute isochrone JSON for every station and add an `isochrone-index.json` manifest so the frontend knows what is available. Watch output size and build time.
+
+### 4. Improve reachability correctness
+
+- Revisit Dijkstra hop limits. Current `maxHops=12` can prevent reachable long chains even within 48h.
+- Consider counting transfers separately from station-to-station hops. Current hop count increments on every graph edge, which penalizes long lines with many stops.
+- Border transfer logic is currently distance-based and broad (`MY` to `SG` under 5 km adds 60 min). Replace with explicit border/interchange edges.
+- Walkable edges are globally added for any stations within 3 km, which can create unrealistic shortcuts. Consider limiting by urban areas or mode/interchange rules.
+
+### 5. Browser validation checklist
+
+Use this checklist after fixes:
+
+- Page loads without JS console errors.
+- No unexpected 404s or failed network requests.
+- Map tiles render and attribution is visible.
+- Station markers render in Malaysia and Singapore.
+- KL Sentral default isochrones render.
+- Slider at 0h hides all bands; higher bands appear as expected.
+- Search for `kl`, `woodlands`, and a nonsense string behaves correctly.
+- Selecting a station without isochrone data shows a graceful, non-broken state.
+- Mobile width around 375px keeps search and slider usable.
+
+## File/data contracts
+
+### Station JSON
+
+`public/data/stations.json`:
+
+```ts
+Array<{
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  country: "MY" | "SG";
+}>
+```
+
+### Isochrone JSON
+
+Per-origin file named by `safeFilename(station.id)`, where `:` becomes `-`.
+
+Example: `ktm:19100` -> `public/data/ktm-19100.json`
+
+```ts
+{
+  type: "FeatureCollection",
+  features: Array<{
+    type: "Feature",
+    geometry: { type: "Polygon" | "MultiPolygon"; coordinates: unknown },
+    properties: {
+      duration: number;
+      fillColor: string;
+      stationCount: number;
+    }
+  }>
+}
+```
+
+### Travel times JSON
+
+`public/data/travel-times.json`:
+
+```ts
+Record<originStationId, Record<destinationStationId, minutes>>
+```
+
+## Coding notes
+
+- Keep `vite.config.ts` `base: "./"` for GitHub Pages/static relative paths.
+- Browser fetch paths should stay relative (`data/...` or `./data/...`), not absolute `/data/...`.
+- Prefer precise changes and validate with `npm run build` after TypeScript changes.
+- If changing generated data, mention whether it came from real GTFS or sample fallback.
+- Do not reintroduce the old from-scratch scaffold instructions unless explicitly asked.

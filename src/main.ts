@@ -1,5 +1,4 @@
 import "./style.css";
-import maplibregl from "maplibre-gl";
 import { createMap } from "./map";
 import { addStationMarkers, setupStationSearch } from "./stations";
 import { renderIsochrones, removeIsochrones } from "./isochrones";
@@ -22,6 +21,25 @@ async function main() {
   let currentIsochrones: IsochroneCollection | null = null;
   let stationCountCache: Map<number, number> = new Map();
 
+  function stationCountFor(maxMinutes: number): number {
+    if (maxMinutes <= 0) return 1;
+    let bestDuration = 0;
+    let bestCount = 1;
+    for (const [duration, count] of stationCountCache) {
+      if (duration <= maxMinutes && duration >= bestDuration) {
+        bestDuration = duration;
+        bestCount = count;
+      }
+    }
+    return bestCount;
+  }
+
+  function setSummary(station: StationData, maxMinutes: number) {
+    const count = stationCountFor(maxMinutes);
+    updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
+    document.getElementById("info-overlay")!.textContent = `Origin: ${station.name}`;
+  }
+
   async function loadStation(station: StationData) {
     currentStation = station;
     loadingEl.style.display = "block";
@@ -29,7 +47,7 @@ async function main() {
 
     map.flyTo({
       center: [station.lng, station.lat],
-      zoom: 8,
+      zoom: station.id === "ktm:19100" ? 6.6 : 8,
       duration: 1000,
     });
 
@@ -57,9 +75,7 @@ async function main() {
 
     renderIsochrones(map, currentIsochrones, maxMinutes);
 
-    const count = stationCountCache.get(maxMinutes) || 0;
-    updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
-    document.getElementById("info-overlay")!.textContent = station.name;
+    setSummary(station, maxMinutes);
   }
 
   map.on("load", async () => {
@@ -82,8 +98,7 @@ async function main() {
       setupSlider((maxMinutes, bandIndex) => {
         if (currentIsochrones) {
           renderIsochrones(map, currentIsochrones, maxMinutes);
-          const count = stationCountCache.get(maxMinutes) || 0;
-          updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
+          setSummary(currentStation, maxMinutes);
         }
       });
 

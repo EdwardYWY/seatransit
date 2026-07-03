@@ -1,6 +1,6 @@
 import type { Graph, Station } from "./utils";
 import { dijkstra } from "./graph";
-import { buffer, union, simplify, point } from "@turf/turf";
+import { buffer, simplify, point, lineString } from "@turf/turf";
 
 const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
 
@@ -27,18 +27,14 @@ export function computeIsochrones(
   const { distances } = dijkstra(startStationId, graph, 2880, 12);
 
   const stationMap = new Map<string, Station>();
-  for (const s of stations) {
-    stationMap.set(s.id, s);
-  }
+  for (const s of stations) stationMap.set(s.id, s);
 
   const features: GeoJSONFeature[] = [];
 
   for (const maxTime of TIME_BANDS) {
-    const reachableIds: string[] = [];
+    const reachableIds = new Set<string>();
     for (const [id, time] of distances) {
-      if (time <= maxTime) {
-        reachableIds.push(id);
-      }
+      if (time <= maxTime) reachableIds.add(id);
     }
 
     const reachableStations: Station[] = [];
@@ -46,55 +42,69 @@ export function computeIsochrones(
       const s = stationMap.get(id);
       if (s) reachableStations.push(s);
     }
+    if (reachableStations.length === 0) continue;
 
-    if (reachableStations.length < 2) {
-      if (reachableStations.length === 1) {
-        const s = reachableStations[0];
-        features.push({
-          type: "Feature",
-          geometry: {
-            type: "Polygon",
-            coordinates: [[
-              [s.lng - 0.01, s.lat - 0.01],
-              [s.lng + 0.01, s.lat - 0.01],
-              [s.lng + 0.01, s.lat + 0.01],
-              [s.lng - 0.01, s.lat + 0.01],
-              [s.lng - 0.01, s.lat - 0.01],
-            ]],
-          },
-          properties: {
-            duration: maxTime,
-            fillColor: getColorForBand(maxTime),
-            stationCount: 1,
-          },
-        });
-      }
-      continue;
-    }
+    // Important: don't draw "remaining walking budget" circles. Chronotrains'
+    // useful visual metaphor is a rail-shaped reachable region. So we buffer
+    // reachable rail graph segments into corridors, then add only small station
+    // blobs. This keeps the output branchy/linear instead of circular.
+    const parts: any[] = [];
+    const corridorKm = corridorWidthKm(maxTime);
+    const stationKm = stationBlobKm(maxTime);
 
-    let merged: any = null;
-    for (const s of reachableStations) {
-      const travelTime = distances.get(s.id)!;
-      const remainingBudget = maxTime - travelTime;
-      const bufKm = Math.min(Math.max(remainingBudget * 0.15, 2), 100);
-      try {
-        const pt = point([s.lng, s.lat]);
-        const buf = buffer(pt, bufKm, { units: "kilometers", steps: 64 });
-        if (!merged) {
-          merged = buf;
-        } else if (buf) {
-          merged = union(merged, buf);
+    const seenSegments = new Set<string>();
+    for (const [fromId, neighbors] of graph) {
+      if (!reachableIds.has(fromId)) continue;
+      const fromStation = stationMap.get(fromId);
+      const fromTime = distances.get(fromId);
+      if (!fromStation || fromTime === undefined) continue;
+
+      for (const [toId, edgeMinutes] of neighbors) {
+        if (!reachableIds.has(toId)) continue;
+        const toStation = stationMap.get(toId);
+        const toTime = distances.get(toId);
+        if (!toStation || toTime === undefined) continue;
+
+        if (Math.max(fromTime, toTime) > maxTime) continue;
+        if (Math.min(fromTime, toTime) + edgeMinutes > maxTime + 30) continue;
+
+        const key = [fromId, toId].sort().join("|");
+        if (seenSegments.has(key)) continue;
+        seenSegments.add(key);
+
+        try {
+          const line = lineString([
+            [fromStation.lng, fromStation.lat],
+            [toStation.lng, toStation.lat],
+          ]);
+          const corridor = buffer(line, corridorKm, { units: "kilometers", steps: 6 });
+          if (corridor) parts.push(corridor);
+        } catch {
+          // skip failed segment
         }
-      } catch {
-        // skip failed buffer
       }
     }
 
+    for (const s of reachableStations) {
+      try {
+        const blob = buffer(point([s.lng, s.lat]), stationKm, { units: "kilometers", steps: 8 });
+        if (blob) parts.push(blob);
+      } catch {
+        // skip failed station
+      }
+    }
+
+    if (parts.length === 0) continue;
+
+    // Do not union these into a single convex-looking blob. Keeping the pieces
+    // as a MultiPolygon preserves the rail-corridor shape and is much faster for
+    // the current sample graph.
+    const merged = multiPolygonFallback(parts);
     if (!merged) continue;
 
     let simplified: any;
     try {
-      simplified = simplify(merged, { tolerance: 0.003, highQuality: true });
+      simplified = simplify(merged, { tolerance: 0.004, highQuality: false });
     } catch {
       simplified = merged;
     }
@@ -114,15 +124,44 @@ export function computeIsochrones(
       properties: {
         duration: maxTime,
         fillColor: getColorForBand(maxTime),
-        stationCount: reachableIds.length,
+        stationCount: reachableIds.size,
       },
     });
   }
 
+  return { type: "FeatureCollection", features };
+}
+
+function multiPolygonFallback(parts: any[]): any {
+  const polygons: number[][][][] = [];
+  for (const part of parts) {
+    const geom = part.geometry;
+    if (!geom) continue;
+    if (geom.type === "Polygon") polygons.push(geom.coordinates);
+    if (geom.type === "MultiPolygon") polygons.push(...geom.coordinates);
+  }
+  if (polygons.length === 0) return null;
   return {
-    type: "FeatureCollection",
-    features,
+    type: "Feature",
+    properties: {},
+    geometry: { type: "MultiPolygon", coordinates: polygons },
   };
+}
+
+function corridorWidthKm(duration: number): number {
+  if (duration <= 60) return 3;
+  if (duration <= 240) return 5;
+  if (duration <= 720) return 8;
+  if (duration <= 1440) return 11;
+  return 14;
+}
+
+function stationBlobKm(duration: number): number {
+  if (duration <= 60) return 3.5;
+  if (duration <= 240) return 5;
+  if (duration <= 720) return 7;
+  if (duration <= 1440) return 9;
+  return 11;
 }
 
 function roundCoords(coords: any, decimals: number): void {
@@ -157,9 +196,7 @@ export function computeTravelTimes(
   const { distances } = dijkstra(startStationId, graph, 2880, 12);
   const result: Record<string, number> = {};
   for (const [id, time] of distances) {
-    if (id !== startStationId) {
-      result[id] = time;
-    }
+    if (id !== startStationId) result[id] = time;
   }
   return result;
 }

@@ -8,6 +8,8 @@ export function renderIsochrones(
 ): void {
   removeIsochrones(map);
 
+  if (maxBand <= 0) return;
+
   const filtered = isochrones.features.filter(
     (f) => f.properties.duration <= maxBand
   );
@@ -32,7 +34,7 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": Math.max(0.08, 0.35 - (i * 0.02)),
+        "fill-opacity": Math.max(0.16, 0.34 - (i * 0.018)),
       },
     });
 
