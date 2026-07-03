@@ -17,7 +17,7 @@ import {
 import polygonClipping from "polygon-clipping";
 
 const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
-const TRANSIT_SPEED_KM_PER_MIN = 0.15;
+const TRANSIT_SPEED_KM_PER_MIN = 0.09;
 const BUFFER_STEPS = 20;
 const INTERCHANGE_TIME = 20;
 
@@ -79,7 +79,10 @@ export function computeIsochrones(
     const stationBuffers = stationsInBand
       .map((s) => {
         const travelTime = distances.get(s.id) || 0;
-        const radius = Math.max(maxTime - travelTime, INTERCHANGE_TIME) * TRANSIT_SPEED_KM_PER_MIN;
+        const radius = Math.min(
+          Math.max(maxTime - travelTime, INTERCHANGE_TIME) * TRANSIT_SPEED_KM_PER_MIN,
+          maxStationBufferKm(maxTime)
+        );
         try {
           return buffer(stationToPoint(s), radius, { units: "kilometers", steps: BUFFER_STEPS });
         } catch {
@@ -142,20 +145,28 @@ function stationToPoint(s: Station) {
   return point([s.lng, s.lat]);
 }
 
+function maxStationBufferKm(duration: number): number {
+  if (duration <= 60) return 7;
+  if (duration <= 240) return 12;
+  if (duration <= 720) return 18;
+  if (duration <= 1440) return 26;
+  return 34;
+}
+
 function getColorForBand(duration: number): string {
   const colors: Record<number, string> = {
     // Chronotrains-style ramp: hot/red near the origin, fading to yellow for
     // longer travel times. Keep later SEA-specific bands pale rather than dark.
-    60: "#BD0026",
-    120: "#F03B20",
-    180: "#FD8D3C",
-    240: "#FECC5C",
-    360: "#FED976",
-    480: "#FFFFB2",
-    720: "#FFFFCC",
-    1440: "#FFFFD9",
-    2160: "#FFFFE5",
-    2880: "#FFFFF0",
+    60: "#D96B52",
+    120: "#E8895E",
+    180: "#F0A96B",
+    240: "#F4C977",
+    360: "#F6DA8A",
+    480: "#F8E8A8",
+    720: "#FAF0C4",
+    1440: "#FBF5D6",
+    2160: "#FCF8E6",
+    2880: "#FEFBF1",
   };
   return colors[duration] || "#333333";
 }

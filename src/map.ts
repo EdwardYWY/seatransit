@@ -6,21 +6,28 @@ export function createMap(container: HTMLElement): maplibregl.Map {
     style: {
       version: 8,
       sources: {
-        osm: {
+        carto: {
           type: "raster",
           tiles: [
-            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+            "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+            "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
           ],
           tileSize: 256,
           attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
         },
       },
       layers: [
         {
-          id: "osm",
+          id: "carto-light",
           type: "raster",
-          source: "osm",
+          source: "carto",
+          paint: {
+            "raster-opacity": 0.72,
+            "raster-saturation": -0.65,
+            "raster-contrast": -0.1,
+          },
         },
       ],
     },
