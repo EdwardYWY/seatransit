@@ -14,7 +14,7 @@ export function renderIsochrones(
     (f) => f.properties.duration <= maxBand
   );
 
-  filtered.sort((a, b) => a.properties.duration - b.properties.duration);
+  filtered.sort((a, b) => b.properties.duration - a.properties.duration);
 
   for (let i = 0; i < filtered.length; i++) {
     const feature = filtered[i];
@@ -34,7 +34,7 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": Math.max(0.16, 0.34 - (i * 0.018)),
+        "fill-opacity": 0.52,
       },
     });
 
@@ -44,8 +44,8 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "line-color": color,
-        "line-opacity": 0.6,
-        "line-width": i === filtered.length - 1 ? 2 : 1.5,
+        "line-opacity": 0.72,
+        "line-width": i === filtered.length - 1 ? 2.2 : 1.2,
       },
     });
   }

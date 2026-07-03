@@ -1,8 +1,25 @@
 import type { Graph, Station } from "./utils";
 import { dijkstra } from "./graph";
-import { buffer, simplify, point, lineString } from "@turf/turf";
+import {
+  buffer,
+  simplify,
+  point,
+  featureCollection,
+  geomEach,
+  polygon,
+  multiPolygon,
+  coordEach,
+  clone,
+  type Feature,
+  type Polygon,
+  type MultiPolygon,
+} from "@turf/turf";
+import polygonClipping from "polygon-clipping";
 
 const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
+const TRANSIT_SPEED_KM_PER_MIN = 0.15;
+const BUFFER_STEPS = 20;
+const INTERCHANGE_TIME = 20;
 
 interface GeoJSONFeature {
   type: "Feature";
@@ -25,166 +42,120 @@ export function computeIsochrones(
   stations: Station[]
 ): GeoJSONFeatureCollection {
   const { distances } = dijkstra(startStationId, graph, 2880, 12);
-
   const stationMap = new Map<string, Station>();
   for (const s of stations) stationMap.set(s.id, s);
 
+  const start = stationMap.get(startStationId);
+  if (!start) return { type: "FeatureCollection", features: [] };
+
   const features: GeoJSONFeature[] = [];
 
-  for (const maxTime of TIME_BANDS) {
-    const reachableIds = new Set<string>();
-    for (const [id, time] of distances) {
-      if (time <= maxTime) reachableIds.add(id);
-    }
+  // This intentionally mirrors Chronotrains' generation model: keep an
+  // accumulated geometry, expand it by the time delta for each band, then union
+  // in destination buffers for stations newly reachable in that band. See
+  // benjamintd/chronotrains src/scripts/compute-isochrones.ts.
+  let isoGeometry: Feature<Polygon | MultiPolygon> = buffer(
+    stationToPoint(start),
+    0.1,
+    { units: "kilometers", steps: BUFFER_STEPS }
+  ) as Feature<Polygon | MultiPolygon>;
 
-    const reachableStations: Station[] = [];
-    for (const id of reachableIds) {
-      const s = stationMap.get(id);
-      if (s) reachableStations.push(s);
-    }
-    if (reachableStations.length === 0) continue;
+  for (let i = 0; i < TIME_BANDS.length; i++) {
+    const minTime = TIME_BANDS[i - 1] || -1;
+    const maxTime = TIME_BANDS[i];
+    const delta = maxTime - minTime;
 
-    // Important: don't draw "remaining walking budget" circles. Chronotrains'
-    // useful visual metaphor is a rail-shaped reachable region. So we buffer
-    // reachable rail graph segments into corridors, then add only small station
-    // blobs. This keeps the output branchy/linear instead of circular.
-    const parts: any[] = [];
-    const corridorKm = corridorWidthKm(maxTime);
-    const stationKm = stationBlobKm(maxTime);
-
-    const seenSegments = new Set<string>();
-    for (const [fromId, neighbors] of graph) {
-      if (!reachableIds.has(fromId)) continue;
-      const fromStation = stationMap.get(fromId);
-      const fromTime = distances.get(fromId);
-      if (!fromStation || fromTime === undefined) continue;
-
-      for (const [toId, edgeMinutes] of neighbors) {
-        if (!reachableIds.has(toId)) continue;
-        const toStation = stationMap.get(toId);
-        const toTime = distances.get(toId);
-        if (!toStation || toTime === undefined) continue;
-
-        if (Math.max(fromTime, toTime) > maxTime) continue;
-        if (Math.min(fromTime, toTime) + edgeMinutes > maxTime + 30) continue;
-
-        const key = [fromId, toId].sort().join("|");
-        if (seenSegments.has(key)) continue;
-        seenSegments.add(key);
-
-        try {
-          const line = lineString([
-            [fromStation.lng, fromStation.lat],
-            [toStation.lng, toStation.lat],
-          ]);
-          const corridor = buffer(line, corridorKm, { units: "kilometers", steps: 6 });
-          if (corridor) parts.push(corridor);
-        } catch {
-          // skip failed segment
-        }
-      }
-    }
-
-    for (const s of reachableStations) {
-      try {
-        const blob = buffer(point([s.lng, s.lat]), stationKm, { units: "kilometers", steps: 8 });
-        if (blob) parts.push(blob);
-      } catch {
-        // skip failed station
-      }
-    }
-
-    if (parts.length === 0) continue;
-
-    // Do not union these into a single convex-looking blob. Keeping the pieces
-    // as a MultiPolygon preserves the rail-corridor shape and is much faster for
-    // the current sample graph.
-    const merged = multiPolygonFallback(parts);
-    if (!merged) continue;
-
-    let simplified: any;
-    try {
-      simplified = simplify(merged, { tolerance: 0.004, highQuality: false });
-    } catch {
-      simplified = merged;
-    }
-
-    const geom = simplified.geometry || simplified;
-    if (!geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) continue;
-
-    const coords = JSON.parse(JSON.stringify(geom.coordinates));
-    roundCoords(coords, 5);
-
-    features.push({
-      type: "Feature",
-      geometry: {
-        type: geom.type as "Polygon" | "MultiPolygon",
-        coordinates: coords,
-      },
-      properties: {
-        duration: maxTime,
-        fillColor: getColorForBand(maxTime),
-        stationCount: reachableIds.size,
-      },
+    const expanded = buffer(isoGeometry, TRANSIT_SPEED_KM_PER_MIN * delta, {
+      units: "kilometers",
+      steps: BUFFER_STEPS,
     });
+    if (expanded) isoGeometry = expanded as Feature<Polygon | MultiPolygon>;
+
+    const stationsInBand = Array.from(distances.entries())
+      .filter(([, time]) => time > minTime && time <= maxTime)
+      .map(([id]) => stationMap.get(id))
+      .filter((s): s is Station => Boolean(s));
+
+    const stationBuffers = stationsInBand
+      .map((s) => {
+        const travelTime = distances.get(s.id) || 0;
+        const radius = Math.max(maxTime - travelTime, INTERCHANGE_TIME) * TRANSIT_SPEED_KM_PER_MIN;
+        try {
+          return buffer(stationToPoint(s), radius, { units: "kilometers", steps: BUFFER_STEPS });
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean) as Feature<Polygon | MultiPolygon>[];
+
+    const fc = featureCollection(stationBuffers);
+    try {
+      simplify(fc, { tolerance: 0.005, mutate: true });
+    } catch {
+      // keep unsimplified buffers
+    }
+
+    const geoms: polygonClipping.Geom[] = [];
+    geomEach(fc, (geom) => {
+      geoms.push(geom.coordinates as polygonClipping.Geom);
+    });
+    geoms.push(isoGeometry.geometry.coordinates as polygonClipping.Geom);
+
+    try {
+      const unioned = geoms.length === 1 ? [geoms[0] as any] : polygonClipping.union(geoms[0], ...geoms);
+      if (unioned.length === 1) {
+        isoGeometry = polygon(unioned[0], { duration: maxTime }) as Feature<Polygon>;
+      } else {
+        isoGeometry = multiPolygon(unioned, { duration: maxTime }) as Feature<MultiPolygon>;
+      }
+    } catch {
+      // If clipping fails, keep the expanded prior geometry rather than falling
+      // back to circles/corridors.
+      isoGeometry.properties = { duration: maxTime };
+    }
+
+    try {
+      simplify(isoGeometry, { tolerance: 0.005, mutate: true });
+    } catch {
+      // keep unsimplified geometry
+    }
+
+    coordEach(isoGeometry, (p) => {
+      p[0] = Math.round(p[0] * 1e4) / 1e4;
+      p[1] = Math.round(p[1] * 1e4) / 1e4;
+    });
+
+    const reachableCount = Array.from(distances.values()).filter((time) => time <= maxTime).length;
+    const feature = clone(isoGeometry) as unknown as GeoJSONFeature;
+    feature.properties = {
+      duration: maxTime,
+      fillColor: getColorForBand(maxTime),
+      stationCount: reachableCount,
+    };
+    features.push(feature);
   }
 
   return { type: "FeatureCollection", features };
 }
 
-function multiPolygonFallback(parts: any[]): any {
-  const polygons: number[][][][] = [];
-  for (const part of parts) {
-    const geom = part.geometry;
-    if (!geom) continue;
-    if (geom.type === "Polygon") polygons.push(geom.coordinates);
-    if (geom.type === "MultiPolygon") polygons.push(...geom.coordinates);
-  }
-  if (polygons.length === 0) return null;
-  return {
-    type: "Feature",
-    properties: {},
-    geometry: { type: "MultiPolygon", coordinates: polygons },
-  };
-}
-
-function corridorWidthKm(duration: number): number {
-  if (duration <= 60) return 3;
-  if (duration <= 240) return 5;
-  if (duration <= 720) return 8;
-  if (duration <= 1440) return 11;
-  return 14;
-}
-
-function stationBlobKm(duration: number): number {
-  if (duration <= 60) return 3.5;
-  if (duration <= 240) return 5;
-  if (duration <= 720) return 7;
-  if (duration <= 1440) return 9;
-  return 11;
-}
-
-function roundCoords(coords: any, decimals: number): void {
-  if (typeof coords[0] === "number") {
-    coords[0] = parseFloat(coords[0].toFixed(decimals));
-    coords[1] = parseFloat(coords[1].toFixed(decimals));
-  } else if (Array.isArray(coords)) {
-    for (const c of coords) roundCoords(c, decimals);
-  }
+function stationToPoint(s: Station) {
+  return point([s.lng, s.lat]);
 }
 
 function getColorForBand(duration: number): string {
   const colors: Record<number, string> = {
-    60: "#FFD700",
-    120: "#FF8C00",
-    180: "#FF6600",
-    240: "#FF4500",
-    360: "#DC143C",
-    480: "#8B0000",
-    720: "#4B0082",
-    1440: "#2E0854",
-    2160: "#1A0033",
-    2880: "#0D001A",
+    // Chronotrains-style ramp: hot/red near the origin, fading to yellow for
+    // longer travel times. Keep later SEA-specific bands pale rather than dark.
+    60: "#BD0026",
+    120: "#F03B20",
+    180: "#FD8D3C",
+    240: "#FECC5C",
+    360: "#FED976",
+    480: "#FFFFB2",
+    720: "#FFFFCC",
+    1440: "#FFFFD9",
+    2160: "#FFFFE5",
+    2880: "#FFFFF0",
   };
   return colors[duration] || "#333333";
 }

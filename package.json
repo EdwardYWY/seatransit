@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@turf/turf": "^7.1.0",
-    "maplibre-gl": "^4.7.0"
+    "maplibre-gl": "^4.7.0",
+    "polygon-clipping": "^0.15.7"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
