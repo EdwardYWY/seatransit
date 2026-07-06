@@ -14,8 +14,8 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
 
 - Frontend source is in `src/`:
   - `src/main.ts` wires map, stations, search, slider, and station loading.
-  - `src/map.ts` creates a MapLibre map using OpenStreetMap raster tiles, not OpenFreeMap.
-  - `src/stations.ts` renders DOM-based station markers and implements search.
+  - `src/map.ts` creates a MapLibre map using softened CARTO light raster tiles.
+  - `src/stations.ts` renders small MapLibre circle-layer station markers and implements search.
   - `src/isochrones.ts` removes/re-adds MapLibre fill/line layers for visible bands.
   - `src/slider.ts` uses a discrete 10-position slider for time bands.
   - `src/data-loader.ts` fetches static JSON from `data/` and maps station IDs to filenames by replacing `:` with `-`.
@@ -40,11 +40,11 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
 - Default isochrone filename is `public/data/ktm-19100.json`, not `kl-sentral.json`.
 - Clicking or searching another station attempts to load `public/data/<safe-station-id>.json` (example: `rapidkl-KJ15.json`). Most stations do **not** have matching isochrone files yet, so the UI shows “No isochrone data”.
 - The slider is discrete:
-  - HTML range: `min="0" max="9" step="1"`
-  - indexes map to `[60,120,180,240,360,480,720,1440,2160,2880]`
-  - there is no real 0-minute state.
-- `travel-times.json` is generated for every origin, but the frontend currently uses station counts stored in each isochrone feature instead of reading `travel-times.json` for counts.
-- Map tiles use `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. Previous OpenFreeMap usage was changed because it returned empty tiles during fixing.
+  - HTML range: `min="0" max="10" step="1"`
+  - indexes map to `[0,60,120,180,240,360,480,720,1440,2160,2880]`
+  - the 0-minute state hides all isochrone bands and shows only the origin marker.
+- `travel-times.json` is generated for every origin. The frontend uses it to hide station markers that are not reachable from the current origin at the current slider time; station counts still come from each isochrone feature when isochrone data exists.
+- Map tiles use CARTO light raster tiles based on OpenStreetMap data.
 
 ## Data reality and limitations
 
@@ -97,9 +97,6 @@ Before claiming anything is fixed, validate in browser with `npm run dev` or `np
 
 ### 1. Make the app honestly stable with sample/static data
 
-- Fix the slider semantics:
-  - Either make it a true minute slider with `0..2880`, or keep it discrete but label it honestly.
-  - Add a real 0h state where no isochrone bands display and count is 1 origin station.
 - Avoid console/network noise when selecting stations without precomputed isochrones.
   - A 404 from `fetch(data/<station>.json)` is expected today but should not be treated as a scary runtime failure.
   - Consider checking an index/manifest of available isochrones or precomputing all origins.

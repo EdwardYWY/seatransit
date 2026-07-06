@@ -1,31 +1,38 @@
 import maplibregl from "maplibre-gl";
 import type { StationData } from "./data-loader";
 
+export interface StationMarkerController {
+  setReachableStationIds(ids: Set<string>): void;
+}
+
 export function addStationMarkers(
   map: maplibregl.Map,
   stations: StationData[],
   onClick: (station: StationData) => void
-): void {
-  const geojson: GeoJSON.FeatureCollection = {
+): StationMarkerController {
+  const stationById = new Map(stations.map((station) => [station.id, station]));
+  const allFeatures = stations.map((s) => ({
+    type: "Feature" as const,
+    geometry: {
+      type: "Point" as const,
+      coordinates: [s.lng, s.lat],
+    },
+    properties: {
+      id: s.id,
+      name: s.name,
+      country: s.country,
+      color: s.country === "MY" ? "#38A169" : "#3182CE",
+    },
+  }));
+
+  const makeGeojson = (ids?: Set<string>): GeoJSON.FeatureCollection => ({
     type: "FeatureCollection",
-    features: stations.map((s) => ({
-      type: "Feature" as const,
-      geometry: {
-        type: "Point" as const,
-        coordinates: [s.lng, s.lat],
-      },
-      properties: {
-        id: s.id,
-        name: s.name,
-        country: s.country,
-        color: s.country === "MY" ? "#2ECC71" : "#3498DB",
-      },
-    })),
-  };
+    features: ids ? allFeatures.filter((feature) => ids.has(String(feature.properties.id))) : allFeatures,
+  });
 
   map.addSource("stations", {
     type: "geojson",
-    data: geojson,
+    data: makeGeojson(),
   });
 
   map.addLayer({
@@ -33,10 +40,22 @@ export function addStationMarkers(
     type: "circle",
     source: "stations",
     paint: {
-      "circle-radius": 6,
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        5,
+        ["case", ["==", ["get", "country"], "SG"], 1.8, 2.6],
+        8,
+        ["case", ["==", ["get", "country"], "SG"], 2.5, 3.6],
+        12,
+        ["case", ["==", ["get", "country"], "SG"], 4.2, 5.2],
+      ],
       "circle-color": ["get", "color"],
-      "circle-stroke-width": 2,
+      "circle-opacity": 0.88,
+      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 10, 1.1],
       "circle-stroke-color": "#ffffff",
+      "circle-stroke-opacity": 0.9,
     },
   });
 
@@ -44,7 +63,7 @@ export function addStationMarkers(
     if (!e.features?.[0]) return;
     const props = e.features[0].properties;
     if (!props) return;
-    const station = stations.find((s) => s.id === props.id);
+    const station = stationById.get(String(props.id));
     if (station) onClick(station);
   });
 
@@ -54,6 +73,13 @@ export function addStationMarkers(
   map.on("mouseleave", "station-circles", () => {
     map.getCanvas().style.cursor = "";
   });
+
+  return {
+    setReachableStationIds(ids: Set<string>) {
+      const source = map.getSource("stations") as maplibregl.GeoJSONSource | undefined;
+      source?.setData(makeGeojson(ids));
+    },
+  };
 }
 
 export function setupStationSearch(
