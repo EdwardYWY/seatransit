@@ -2,10 +2,10 @@ import "./style.css";
 import { createMap } from "./map";
 import { addStationMarkers, setupStationSearch } from "./stations";
 import { renderIsochrones, removeIsochrones } from "./isochrones";
+import { buildDynamicIsochrones } from "./dynamic-isochrones";
 import { setupSlider, updateSliderValue, formatDuration, getTimeBandValue } from "./slider";
 import {
   loadStations,
-  loadIsochrones,
   loadTravelTimes,
   type StationData,
   type IsochroneCollection,
@@ -18,10 +18,14 @@ async function main() {
 
   const mapContainer = document.getElementById("map")!;
   const map = createMap(mapContainer);
+  if (import.meta.env.DEV) {
+    (window as unknown as { __seatransitMap?: typeof map }).__seatransitMap = map;
+  }
 
   let currentStation: StationData;
   let currentIsochrones: IsochroneCollection | null = null;
   let currentTravelTimes: TravelTimes = {};
+  let allStations: StationData[] = [];
   let markerController: ReturnType<typeof addStationMarkers> | null = null;
   let stationCountCache: Map<number, number> = new Map();
 
@@ -57,7 +61,7 @@ async function main() {
   function setSummary(station: StationData, maxMinutes: number) {
     const count = stationCountFor(maxMinutes);
     updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
-    document.getElementById("info-overlay")!.textContent = `Origin: ${station.name}`;
+    document.getElementById("info-overlay")!.textContent = `Origin: ${displayStationName(station)}`;
   }
 
   async function loadStation(station: StationData) {
@@ -71,21 +75,9 @@ async function main() {
       duration: 1000,
     });
 
-    try {
-      currentIsochrones = await loadIsochrones(station.id);
-    } catch {
-      currentIsochrones = { type: "FeatureCollection", features: [] };
-    }
+    currentIsochrones = buildDynamicIsochrones(station, allStations, currentTravelTimes);
 
     loadingEl.style.display = "none";
-
-    if (currentIsochrones.features.length === 0) {
-      const slider = document.getElementById("time-slider") as HTMLInputElement;
-      const maxMinutes = getTimeBandValue(parseInt(slider.value));
-      updateReachableMarkers(maxMinutes);
-      updateSliderValue(`${station.name} — No isochrone data`);
-      return;
-    }
 
     stationCountCache.clear();
     for (const f of currentIsochrones.features) {
@@ -109,6 +101,7 @@ async function main() {
         loadTravelTimes(),
       ]);
       currentTravelTimes = travelTimes;
+      allStations = stations;
       loadingEl.style.display = "none";
 
       markerController = addStationMarkers(map, stations, async (station) => {
@@ -139,6 +132,10 @@ async function main() {
       errorEl.classList.add("visible");
     }
   });
+}
+
+function displayStationName(station: StationData): string {
+  return station.name.split(";").pop()?.trim() || station.name.trim();
 }
 
 main().catch(console.error);

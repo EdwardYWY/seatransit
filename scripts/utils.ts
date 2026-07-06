@@ -17,7 +17,7 @@ export interface Edge {
 export type Graph = Map<string, Map<string, number>>;
 
 export interface AgencyConfig {
-  id: "ktm" | "rapidkl" | "sgmrt";
+  id: "ktm" | "rapidkl" | "sgmrt" | "thrail";
   name: string;
   url: string;
   country: "MY" | "SG" | "TH";

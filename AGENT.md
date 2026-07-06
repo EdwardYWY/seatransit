@@ -4,7 +4,7 @@ This file is for coding agents working on this repository. The old implementatio
 
 ## Project summary
 
-`seatransit` is a static Vite + TypeScript + MapLibre web app showing rail-reachability isochrones around Malaysia/Singapore. It currently focuses on KL Sentral as the default origin, with early support for per-station origins when a matching precomputed GeoJSON file exists.
+`seatransit` is a static Vite + TypeScript + MapLibre web app showing rail-reachability isochrones around Malaysia, Singapore, and Thailand. The browser supports switching the origin to any station by rendering lightweight dynamic isochrone bands from precomputed travel times.
 
 The app is deployable as static files: data is generated into `public/data/`, Vite copies it into `dist/data/`, and the browser only fetches static JSON plus map tiles.
 
@@ -14,8 +14,9 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
 
 - Frontend source is in `src/`:
   - `src/main.ts` wires map, stations, search, slider, and station loading.
-  - `src/map.ts` creates a MapLibre map using softened CARTO light raster tiles.
-  - `src/stations.ts` renders small MapLibre circle-layer station markers and implements search.
+  - `src/map.ts` creates a MapLibre map using CARTO Voyager raster tiles with stronger label contrast.
+  - `src/stations.ts` renders small MapLibre circle-layer station markers, high-zoom station labels, and search.
+  - `src/dynamic-isochrones.ts` builds short-term dynamic station-buffer isochrone bands in the browser from `stations.json` + `travel-times.json`.
   - `src/isochrones.ts` removes/re-adds MapLibre fill/line layers for visible bands.
   - `src/slider.ts` uses a discrete 10-position slider for time bands.
   - `src/data-loader.ts` fetches static JSON from `data/` and maps station IDs to filenames by replacing `:` with `-`.
@@ -37,14 +38,14 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
 ### Important current behavior
 
 - Default origin is `ktm:19100` / KL Sentral.
-- Default isochrone filename is `public/data/ktm-19100.json`, not `kl-sentral.json`.
-- Clicking or searching another station attempts to load `public/data/<safe-station-id>.json` (example: `rapidkl-KJ15.json`). Most stations do **not** have matching isochrone files yet, so the UI shows “No isochrone data”.
+- Default isochrone filename is `public/data/ktm-19100.json`, not `kl-sentral.json`, but the frontend currently uses dynamic isochrone rendering for all origins instead of fetching per-station isochrone files.
+- Clicking or searching another station switches the origin, recomputes dynamic isochrone bands in the browser, updates station visibility, and flies the map to the selected station.
 - The slider is discrete:
   - HTML range: `min="0" max="10" step="1"`
   - indexes map to `[0,60,120,180,240,360,480,720,1440,2160,2880]`
   - the 0-minute state hides all isochrone bands and shows only the origin marker.
-- `travel-times.json` is generated for every origin. The frontend uses it to hide station markers that are not reachable from the current origin at the current slider time; station counts still come from each isochrone feature when isochrone data exists.
-- Map tiles use CARTO light raster tiles based on OpenStreetMap data.
+- `travel-times.json` is generated for every origin. The frontend uses it to hide station markers that are not reachable from the current origin at the current slider time and to build dynamic isochrone bands/counts.
+- Map tiles use CARTO Voyager raster tiles based on OpenStreetMap data.
 
 ## Data reality and limitations
 
@@ -78,7 +79,7 @@ Observed when running `npm run build-data`:
   - `ktm:47300` Padang Besar ↔ `thrail:17003` Hat Yai Junction, because the Thailand feed lacks a Padang Besar stop.
   - `ktm:86300` Tumpat ↔ `thrail:17015` Su-Ngai Kolok, eastern MY/TH rail border.
 
-Do not describe the project as using authoritative live GTFS data until the parser/download issues are fixed and validated.
+Do not describe the project as authoritative/live-routing data. It uses static GTFS snapshots and several explicit modeling approximations.
 
 ## Commands
 
@@ -102,7 +103,7 @@ Last checked:
 
 ```bash
 npm run build      # passes, Vite chunk-size warning only
-npm run build-data # passes, but uses sample fallback data
+npm run build-data # passes with KTM, Rapid KL, Singapore rail, and Thailand rail feeds
 ```
 
 Before claiming anything is fixed, validate in browser with `npm run dev` or `npm run preview` and inspect console/network failures.
@@ -111,9 +112,8 @@ Before claiming anything is fixed, validate in browser with `npm run dev` or `np
 
 ### 1. Make the app honestly stable with sample/static data
 
-- Avoid console/network noise when selecting stations without precomputed isochrones.
-  - A 404 from `fetch(data/<station>.json)` is expected today but should not be treated as a scary runtime failure.
-  - Consider checking an index/manifest of available isochrones or precomputing all origins.
+- Keep dynamic isochrone rendering fast and visually useful without precomputing one GeoJSON file per station.
+  - Current short-term implementation renders non-unioned per-band station buffers, not exact network corridors.
 - Improve selected-station UX:
   - Marker highlighting/pulsing is not currently implemented despite earlier plans.
   - Current station click opens popup and triggers origin load.
@@ -133,14 +133,15 @@ Things to inspect/fix:
 - Rapid KL frequencies are not actually used beyond detecting `frequencies` exists.
 - Add validation and clear diagnostics for parsed station/edge counts per agency.
 
-### 3. Decide the product scope for origins
+### 3. Improve dynamic origin rendering
 
-Current code suggests dynamic per-station origin selection, but data only has KL Sentral isochrones.
+The product direction is dynamic all-origin selection without precomputing one asset per station.
 
-Pick one direction:
+Next improvements:
 
-- **KL-only MVP**: simplify UI copy and behavior so selecting a station just flies/opens info, not “origin switching”. Keep only `ktm-19100.json`.
-- **All-origin MVP**: update `build-data.ts` to compute isochrone JSON for every station and add an `isochrone-index.json` manifest so the frontend knows what is available. Watch output size and build time.
+- Tune station-buffer sizes/opacities so bands feel organic but do not imply impossible ocean/land coverage.
+- Consider rail-corridor geometry or a Web Worker if dynamic rendering becomes heavier at Laos/China scale.
+- Keep `public/data/` limited to the shared JSON assets unless there is a clear reason to add precomputed popular-origin files.
 
 ### 4. Improve reachability correctness
 
@@ -155,11 +156,11 @@ Use this checklist after fixes:
 - Page loads without JS console errors.
 - No unexpected 404s or failed network requests.
 - Map tiles render and attribution is visible.
-- Station markers render in Malaysia and Singapore.
-- KL Sentral default isochrones render.
+- Station markers render in Malaysia, Singapore, and Thailand.
+- Dynamic isochrones render for KL Sentral and non-default origins such as Woodlands and Hat Yai.
 - Slider at 0h hides all bands; higher bands appear as expected.
 - Search for `kl`, `woodlands`, and a nonsense string behaves correctly.
-- Selecting a station without isochrone data shows a graceful, non-broken state.
+- Selecting another station switches origin and renders dynamic isochrones without 404s.
 - Mobile width around 375px keeps search and slider usable.
 
 ## File/data contracts
@@ -174,7 +175,7 @@ Array<{
   name: string;
   lat: number;
   lng: number;
-  country: "MY" | "SG";
+  country: "MY" | "SG" | "TH";
 }>
 ```
 

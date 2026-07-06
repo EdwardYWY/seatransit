@@ -19,7 +19,7 @@ export function addStationMarkers(
     },
     properties: {
       id: s.id,
-      name: s.name,
+      name: displayStationName(s.name),
       country: s.country,
       color: s.country === "MY" ? "#38A169" : s.country === "SG" ? "#3182CE" : "#9F7AEA",
     },
@@ -59,6 +59,28 @@ export function addStationMarkers(
     },
   });
 
+  map.addLayer({
+    id: "station-labels",
+    type: "symbol",
+    source: "stations",
+    minzoom: 9.5,
+    layout: {
+      "text-field": ["get", "name"],
+      "text-font": ["Noto Sans Regular"],
+      "text-size": ["interpolate", ["linear"], ["zoom"], 9.5, 10, 12, 12.5, 14, 14],
+      "text-offset": [0, 0.9],
+      "text-anchor": "top",
+      "text-allow-overlap": false,
+      "text-ignore-placement": false,
+    },
+    paint: {
+      "text-color": "#1f2937",
+      "text-halo-color": "#ffffff",
+      "text-halo-width": 1.4,
+      "text-halo-blur": 0.4,
+    },
+  });
+
   map.on("click", "station-circles", (e) => {
     if (!e.features?.[0]) return;
     const props = e.features[0].properties;
@@ -82,6 +104,10 @@ export function addStationMarkers(
   };
 }
 
+function displayStationName(name: string): string {
+  return name.split(";").pop()?.trim() || name.trim();
+}
+
 export function setupStationSearch(
   stations: StationData[],
   onSelect: (station: StationData) => void
@@ -100,7 +126,7 @@ export function setupStationSearch(
 
     for (const station of matches) {
       const div = document.createElement("div");
-      div.textContent = `${station.name} (${station.country})`;
+      div.textContent = `${displayStationName(station.name)} (${station.country})`;
       div.setAttribute("role", "option");
       div.addEventListener("click", () => {
         selectStation(station);
@@ -120,7 +146,7 @@ export function setupStationSearch(
     onSelect(station);
     results.innerHTML = "";
     results.classList.remove("visible");
-    input.value = station.name;
+    input.value = displayStationName(station.name);
     input.setAttribute("aria-expanded", "false");
   }
 

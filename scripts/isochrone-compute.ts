@@ -17,9 +17,9 @@ import {
 import polygonClipping from "polygon-clipping";
 
 const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
-const TRANSIT_SPEED_KM_PER_MIN = 0.09;
-const BUFFER_STEPS = 20;
-const INTERCHANGE_TIME = 20;
+const LOCAL_ACCESS_SPEED_KM_PER_MIN = 0.04;
+const BUFFER_STEPS = 14;
+const INTERCHANGE_TIME = 10;
 
 interface GeoJSONFeature {
   type: "Feature";
@@ -50,38 +50,19 @@ export function computeIsochrones(
 
   const features: GeoJSONFeature[] = [];
 
-  // This intentionally mirrors Chronotrains' generation model: keep an
-  // accumulated geometry, expand it by the time delta for each band, then union
-  // in destination buffers for stations newly reachable in that band. See
-  // benjamintd/chronotrains src/scripts/compute-isochrones.ts.
-  let isoGeometry: Feature<Polygon | MultiPolygon> = buffer(
-    stationToPoint(start),
-    0.1,
-    { units: "kilometers", steps: BUFFER_STEPS }
-  ) as Feature<Polygon | MultiPolygon>;
-
-  for (let i = 0; i < TIME_BANDS.length; i++) {
-    const minTime = TIME_BANDS[i - 1] || -1;
-    const maxTime = TIME_BANDS[i];
-    const delta = maxTime - minTime;
-
-    const expanded = buffer(isoGeometry, TRANSIT_SPEED_KM_PER_MIN * delta, {
-      units: "kilometers",
-      steps: BUFFER_STEPS,
-    });
-    if (expanded) isoGeometry = expanded as Feature<Polygon | MultiPolygon>;
-
-    const stationsInBand = Array.from(distances.entries())
-      .filter(([, time]) => time > minTime && time <= maxTime)
+  for (const maxTime of TIME_BANDS) {
+    const reachableStations = Array.from(distances.entries())
+      .filter(([, time]) => time <= maxTime)
       .map(([id]) => stationMap.get(id))
       .filter((s): s is Station => Boolean(s));
 
-    const stationBuffers = stationsInBand
+    const stationBuffers = reachableStations
       .map((s) => {
         const travelTime = distances.get(s.id) || 0;
+        const remaining = Math.max(maxTime - travelTime, INTERCHANGE_TIME);
         const radius = Math.min(
-          Math.max(maxTime - travelTime, INTERCHANGE_TIME) * TRANSIT_SPEED_KM_PER_MIN,
-          maxStationBufferKm(maxTime)
+          remaining * LOCAL_ACCESS_SPEED_KM_PER_MIN,
+          maxStationBufferKm(maxTime, s.id === startStationId)
         );
         try {
           return buffer(stationToPoint(s), radius, { units: "kilometers", steps: BUFFER_STEPS });
@@ -93,7 +74,7 @@ export function computeIsochrones(
 
     const fc = featureCollection(stationBuffers);
     try {
-      simplify(fc, { tolerance: 0.005, mutate: true });
+      simplify(fc, { tolerance: 0.003, mutate: true });
     } catch {
       // keep unsimplified buffers
     }
@@ -102,23 +83,25 @@ export function computeIsochrones(
     geomEach(fc, (geom) => {
       geoms.push(geom.coordinates as polygonClipping.Geom);
     });
-    geoms.push(isoGeometry.geometry.coordinates as polygonClipping.Geom);
 
+    let isoGeometry: Feature<Polygon | MultiPolygon> | null = null;
     try {
-      const unioned = geoms.length === 1 ? [geoms[0] as any] : polygonClipping.union(geoms[0], ...geoms);
-      if (unioned.length === 1) {
-        isoGeometry = polygon(unioned[0], { duration: maxTime }) as Feature<Polygon>;
-      } else {
-        isoGeometry = multiPolygon(unioned, { duration: maxTime }) as Feature<MultiPolygon>;
+      if (geoms.length === 1) {
+        isoGeometry = polygon(geoms[0] as any, { duration: maxTime }) as Feature<Polygon>;
+      } else if (geoms.length > 1) {
+        const unioned = polygonClipping.union(geoms[0], ...geoms.slice(1));
+        isoGeometry = unioned.length === 1
+          ? polygon(unioned[0], { duration: maxTime }) as Feature<Polygon>
+          : multiPolygon(unioned, { duration: maxTime }) as Feature<MultiPolygon>;
       }
     } catch {
-      // If clipping fails, keep the expanded prior geometry rather than falling
-      // back to circles/corridors.
-      isoGeometry.properties = { duration: maxTime };
+      isoGeometry = stationBuffers[0] ? clone(stationBuffers[0]) as Feature<Polygon | MultiPolygon> : null;
     }
 
+    if (!isoGeometry) continue;
+
     try {
-      simplify(isoGeometry, { tolerance: 0.005, mutate: true });
+      simplify(isoGeometry, { tolerance: 0.003, mutate: true });
     } catch {
       // keep unsimplified geometry
     }
@@ -128,7 +111,7 @@ export function computeIsochrones(
       p[1] = Math.round(p[1] * 1e4) / 1e4;
     });
 
-    const reachableCount = Array.from(distances.values()).filter((time) => time <= maxTime).length;
+    const reachableCount = reachableStations.length;
     const feature = clone(isoGeometry) as unknown as GeoJSONFeature;
     feature.properties = {
       duration: maxTime,
@@ -145,12 +128,13 @@ function stationToPoint(s: Station) {
   return point([s.lng, s.lat]);
 }
 
-function maxStationBufferKm(duration: number): number {
-  if (duration <= 60) return 7;
-  if (duration <= 240) return 12;
-  if (duration <= 720) return 18;
-  if (duration <= 1440) return 26;
-  return 34;
+function maxStationBufferKm(duration: number, isOrigin = false): number {
+  if (isOrigin) return duration <= 60 ? 5 : 8;
+  if (duration <= 60) return 3;
+  if (duration <= 240) return 5;
+  if (duration <= 720) return 7;
+  if (duration <= 1440) return 9;
+  return 11;
 }
 
 function getColorForBand(duration: number): string {

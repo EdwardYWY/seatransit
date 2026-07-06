@@ -373,7 +373,7 @@ async function main() {
   }
 
   const defaultStation = stations.find((s) => s.id === "ktm:19100") || stations[0];
-  console.log(`\nComputing isochrones for ${defaultStation.name} (${defaultStation.id})...`);
+  console.log(`\nComputing default isochrones for ${defaultStation.name} (${defaultStation.id})...`);
   const isochrones = computeIsochrones(defaultStation.id, defaultStation.name, graph, stations);
   writeFileSync(
     join(PUBLIC_DIR, `${safeFilename(defaultStation.id)}.json`),
