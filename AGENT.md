@@ -32,7 +32,7 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
   - `ktm-19100.json` (default KL Sentral isochrones)
   - `travel-times.json`
 - `npm run build` currently succeeds, with a Vite chunk-size warning because MapLibre/Turf are bundled.
-- `npm run build-data` currently parses KTM and Rapid KL GTFS from data.gov.my, but Singapore MRT still fails because the configured URL returns 404.
+- `npm run build-data` currently parses KTM and Rapid KL GTFS from data.gov.my plus an unofficial Singapore rail GTFS feed listed by Transitland.
 
 ### Important current behavior
 
@@ -54,15 +54,17 @@ Observed when running `npm run build-data`:
 
 - KTM GTFS downloads and parses successfully.
 - Rapid KL GTFS downloads and parses successfully.
-- Singapore MRT URL in `scripts/utils.ts` still returns 404:
-  - `https://storage.googleapis.com/sg-mrt-gtfs/gtfs-static.zip`
-- Because KTM/Rapid KL parse now succeeds, the sample/demo fallback is no longer used unless every agency fails.
-- Current real MY-only output after `build-data` is about:
-  - 378 stations
-  - 378 MY stations, 0 SG stations
+- Singapore MRT uses an unofficial Transitland-listed feed:
+  - `https://cdn.rushowl.app/rushtrail-app/gtfs-feed/gtfs-feed-lta.zip`
+  - Transitland feed page: `https://www.transit.land/feeds/f-w21z-lta`
+  - This feed includes bus and rail; `routeTypeFilter: 1` keeps rail trips/stops only.
+- Because KTM/Rapid KL/SG rail parse now succeeds, the sample/demo fallback is no longer used unless every agency fails.
+- Current output after `build-data` is about:
+  - 568 stations
+  - 378 MY stations, 190 SG stations
   - 10 KL Sentral isochrone bands
-  - 378 origins in `travel-times.json`
-- Singapore is currently absent from generated station data until a valid SG MRT source is configured.
+  - 568 origins in `travel-times.json`
+- KL Sentral still does not reach SG in `travel-times.json` with the current graph/hop constraints, despite SG stations being present. Investigate Dijkstra `maxHops=12`, border/interchange modeling, and long-chain rail edges next.
 
 Do not describe the project as using authoritative live GTFS data until the parser/download issues are fixed and validated.
 
@@ -113,7 +115,7 @@ This is the largest correctness gap.
 
 Things to inspect/fix:
 
-- Singapore MRT source URL is stale. Find and replace with a current source, or commit a known-good static fixture with license/attribution.
+- Validate the unofficial Singapore GTFS source quality/licensing for production use. It is listed by Transitland as unofficial and appears to be hosted by RushOwl.
 - Route filtering logic in `gtfs-parser.ts` has an unused `filteredTripIds` block; clean this up.
 - Station filtering for Singapore parent/child stops is not implemented.
 - Rapid KL frequencies are not actually used beyond detecting `frequencies` exists.

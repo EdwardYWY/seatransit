@@ -105,16 +105,33 @@ export function parseAgencyZip(zipPath: string, config: AgencyConfig): { station
     routeTypeMap.set(r.route_id, parseInt(r.route_type));
   }
 
-  if (config.routeTypeFilter !== undefined) {
-    const filteredTripIds = new Set(
-      trips.filter((t) => routeTypeMap.get(t.route_id) === config.routeTypeFilter).map((t) => t.trip_id)
-    );
+  const tripRouteTypeMap = new Map<string, number | undefined>();
+  for (const trip of trips) {
+    tripRouteTypeMap.set(trip.trip_id, routeTypeMap.get(trip.route_id));
+  }
+
+  const shouldKeepTrip = (tripId: string): boolean => {
+    if (config.routeTypeFilter === undefined) return true;
+    return tripRouteTypeMap.get(tripId) === config.routeTypeFilter;
+  };
+
+  const tripStopTimes = new Map<string, RawStopTime[]>();
+  const usedStopIds = new Set<string>();
+  for (const st of stopTimes) {
+    if (!shouldKeepTrip(st.trip_id)) continue;
+    if (!tripStopTimes.has(st.trip_id)) tripStopTimes.set(st.trip_id, []);
+    tripStopTimes.get(st.trip_id)!.push(st);
+    usedStopIds.add(st.stop_id);
   }
 
   const stations: Station[] = [];
   const stationMap = new Map<string, Station>();
 
   for (const s of stops) {
+    // If an agency uses route filtering (e.g. Singapore rail from a bus+rail
+    // feed), only keep stops that actually appear in the filtered trips. This
+    // prevents thousands of bus stops from becoming walkable rail stations.
+    if (config.routeTypeFilter !== undefined && !usedStopIds.has(s.stop_id)) continue;
     const station: Station = {
       id: `${config.id}:${s.stop_id}`,
       name: s.stop_name,
@@ -130,18 +147,6 @@ export function parseAgencyZip(zipPath: string, config: AgencyConfig): { station
   const edges: Edge[] = [];
 
   const hasFrequencies = frequencies && frequencies.length > 0;
-
-  const tripStopTimes = new Map<string, RawStopTime[]>();
-  for (const st of stopTimes) {
-    if (config.routeTypeFilter !== undefined) {
-      const trip = trips.find((t) => t.trip_id === st.trip_id);
-      if (!trip) continue;
-      const rt = routeTypeMap.get(trip.route_id);
-      if (rt !== config.routeTypeFilter) continue;
-    }
-    if (!tripStopTimes.has(st.trip_id)) tripStopTimes.set(st.trip_id, []);
-    tripStopTimes.get(st.trip_id)!.push(st);
-  }
 
   for (const [tripId, times] of tripStopTimes) {
     times.sort((a, b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));

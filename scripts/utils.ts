@@ -40,7 +40,9 @@ export const AGENCIES: AgencyConfig[] = [
   {
     id: "sgmrt",
     name: "Singapore MRT",
-    url: "https://storage.googleapis.com/sg-mrt-gtfs/gtfs-static.zip",
+    // Unofficial Singapore GTFS feed listed by Transitland as f-w21z-lta.
+    // LTA DataMall does not publish an official complete static GTFS zip.
+    url: "https://cdn.rushowl.app/rushtrail-app/gtfs-feed/gtfs-feed-lta.zip",
     country: "SG",
     routeTypeFilter: 1,
   },
