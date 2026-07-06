@@ -41,7 +41,7 @@ export function computeIsochrones(
   graph: Graph,
   stations: Station[]
 ): GeoJSONFeatureCollection {
-  const { distances } = dijkstra(startStationId, graph, 2880, 12);
+  const { distances } = dijkstra(startStationId, graph, 2880);
   const stationMap = new Map<string, Station>();
   for (const s of stations) stationMap.set(s.id, s);
 
@@ -175,7 +175,7 @@ export function computeTravelTimes(
   startStationId: string,
   graph: Graph
 ): Record<string, number> {
-  const { distances } = dijkstra(startStationId, graph, 2880, 12);
+  const { distances } = dijkstra(startStationId, graph, 2880);
   const result: Record<string, number> = {};
   for (const [id, time] of distances) {
     if (id !== startStationId) result[id] = time;

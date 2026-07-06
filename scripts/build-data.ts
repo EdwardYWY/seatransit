@@ -385,7 +385,7 @@ async function main() {
   const travelTimes: Record<string, Record<string, number>> = {};
   let count = 0;
   for (const station of stations) {
-    const { distances } = dijkstra(station.id, graph, 2880, 12);
+    const { distances } = dijkstra(station.id, graph, 2880);
     const times: Record<string, number> = {};
     for (const [id, dist] of distances) {
       if (id !== station.id) {

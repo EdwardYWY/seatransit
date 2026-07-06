@@ -64,7 +64,10 @@ Observed when running `npm run build-data`:
   - 378 MY stations, 190 SG stations
   - 10 KL Sentral isochrone bands
   - 568 origins in `travel-times.json`
-- KL Sentral still does not reach SG in `travel-times.json` with the current graph/hop constraints, despite SG stations being present. Investigate Dijkstra `maxHops=12`, border/interchange modeling, and long-chain rail edges next.
+- KL Sentral now reaches all 190 SG stations in `travel-times.json`; nearest SG rail stations are about 357-360 minutes from KL Sentral under current static modeling.
+- Path modeling fix increased Dijkstra default `maxHops` to 240 and adds two known KTM connector edges:
+  - `ktm:25100` Pulau Sebang/Tampin ↔ `ktm:27800` Gemas, because KTM GTFS separates KL-area services from southern Intercity services.
+  - `ktm:37400` Holiday Plaza ↔ `ktm:36900` Kempas Bahru, because KTM stop_times references missing stop_id `37200` between them.
 
 Do not describe the project as using authoritative live GTFS data until the parser/download issues are fixed and validated.
 
@@ -132,8 +135,7 @@ Pick one direction:
 
 ### 4. Improve reachability correctness
 
-- Revisit Dijkstra hop limits. Current `maxHops=12` can prevent reachable long chains even within 48h.
-- Consider counting transfers separately from station-to-station hops. Current hop count increments on every graph edge, which penalizes long lines with many stops.
+- Consider replacing Dijkstra's remaining hop limit with transfer-aware pruning. Current default `maxHops=240` avoids truncating long rail chains but is still a crude guard.
 - Border transfer logic is currently distance-based and broad (`MY` to `SG` under 5 km adds 60 min). Replace with explicit border/interchange edges.
 - Walkable edges are globally added for any stations within 3 km, which can create unrealistic shortcuts. Consider limiting by urban areas or mode/interchange rules.
 

@@ -4,6 +4,7 @@ const MAX_WALK_DISTANCE = 3;
 const WALK_SPEED = 9;
 const TRANSFER_TIME = 15;
 const BORDER_TIME = 60;
+const DEFAULT_MAX_HOPS = 240;
 
 export function buildGraph(stations: Station[], edges: Edge[]): Graph {
   const graph: Graph = new Map();
@@ -18,6 +19,7 @@ export function buildGraph(stations: Station[], edges: Edge[]): Graph {
 
   addWalkableEdges(graph, stations);
   addTransferEdges(graph, stations);
+  addKnownRailConnectorEdges(graph, stations);
   addBorderEdges(graph, stations);
 
   return graph;
@@ -81,6 +83,28 @@ function addTransferEdges(graph: Graph, stations: Station[]): void {
   console.log(`  Transfer edges added: ${added}`);
 }
 
+function addKnownRailConnectorEdges(graph: Graph, stations: Station[]): void {
+  const stationIds = new Set(stations.map((s) => s.id));
+  const connectors: Array<[string, string, number, string]> = [
+    // KTM's current GTFS separates KL-area Komuter/ETS services from the
+    // southern Intercity services that start at Gemas. Without this physical
+    // rail corridor gap, KL can never reach Johor/Singapore even within 48h.
+    ["ktm:25100", "ktm:27800", 45, "Pulau Sebang/Tampin ↔ Gemas"],
+    // KTM stop_times references stop_id 37200 between Holiday Plaza and Kempas
+    // Bahru, but that stop is currently absent from stops.txt. Bridge over the
+    // missing stop so the southern line remains connected to JB Sentral.
+    ["ktm:37400", "ktm:36900", 10, "Holiday Plaza ↔ Kempas Bahru"],
+  ];
+
+  let added = 0;
+  for (const [fromId, toId, minutes] of connectors) {
+    if (!stationIds.has(fromId) || !stationIds.has(toId)) continue;
+    addEdge(graph, fromId, toId, minutes);
+    added++;
+  }
+  console.log(`  Known rail connector edges added: ${added}`);
+}
+
 function addBorderEdges(graph: Graph, stations: Station[]): void {
   const myStations = stations.filter((s) => s.country === "MY");
   const sgStations = stations.filter((s) => s.country === "SG");
@@ -107,7 +131,7 @@ export function dijkstra(
   startId: string,
   graph: Graph,
   maxDuration: number = 2880,
-  maxHops: number = 12
+  maxHops: number = DEFAULT_MAX_HOPS
 ): DijkstraResult {
   const distances = new Map<string, number>();
   const hops = new Map<string, number>();
