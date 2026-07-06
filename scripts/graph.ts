@@ -94,6 +94,13 @@ function addKnownRailConnectorEdges(graph: Graph, stations: Station[]): void {
     // Bahru, but that stop is currently absent from stops.txt. Bridge over the
     // missing stop so the southern line remains connected to JB Sentral.
     ["ktm:37400", "ktm:36900", 10, "Holiday Plaza ↔ Kempas Bahru"],
+    // Cross-border rail is present operationally but not joined between feeds.
+    // Padang Besar is the main MY/TH interchange; Namtang currently lacks a
+    // Padang Besar rail stop, so connect to Hat Yai Junction as the nearest
+    // major Thai rail node on this feed.
+    ["ktm:47300", "thrail:17003", 60, "Padang Besar ↔ Hat Yai Junction"],
+    // Eastern border interchange for the Jungle Line / southern Thailand.
+    ["ktm:86300", "thrail:17015", 60, "Tumpat ↔ Su-Ngai Kolok"],
   ];
 
   let added = 0;
@@ -108,18 +115,32 @@ function addKnownRailConnectorEdges(graph: Graph, stations: Station[]): void {
 function addBorderEdges(graph: Graph, stations: Station[]): void {
   const myStations = stations.filter((s) => s.country === "MY");
   const sgStations = stations.filter((s) => s.country === "SG");
+  const thStations = stations.filter((s) => s.country === "TH");
 
   let added = 0;
-  for (const my of myStations) {
-    for (const sg of sgStations) {
-      const dist = haversineKm(my.lat, my.lng, sg.lat, sg.lng);
-      if (dist < 5) {
-        addEdge(graph, my.id, sg.id, BORDER_TIME);
+  added += addCountryBorderEdges(graph, myStations, sgStations, 5, BORDER_TIME);
+  added += addCountryBorderEdges(graph, myStations, thStations, 8, BORDER_TIME);
+  console.log(`  Border edges added: ${added}`);
+}
+
+function addCountryBorderEdges(
+  graph: Graph,
+  aStations: Station[],
+  bStations: Station[],
+  maxDistanceKm: number,
+  borderTimeMinutes: number
+): number {
+  let added = 0;
+  for (const a of aStations) {
+    for (const b of bStations) {
+      const dist = haversineKm(a.lat, a.lng, b.lat, b.lng);
+      if (dist < maxDistanceKm) {
+        addEdge(graph, a.id, b.id, borderTimeMinutes);
         added++;
       }
     }
   }
-  console.log(`  Border edges added: ${added}`);
+  return added;
 }
 
 export interface DijkstraResult {

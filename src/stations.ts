@@ -21,7 +21,7 @@ export function addStationMarkers(
       id: s.id,
       name: s.name,
       country: s.country,
-      color: s.country === "MY" ? "#38A169" : "#3182CE",
+      color: s.country === "MY" ? "#38A169" : s.country === "SG" ? "#3182CE" : "#9F7AEA",
     },
   }));
 
@@ -45,11 +45,11 @@ export function addStationMarkers(
         ["linear"],
         ["zoom"],
         5,
-        ["case", ["==", ["get", "country"], "SG"], 1.8, 2.6],
+        ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 1.8, 2.6],
         8,
-        ["case", ["==", ["get", "country"], "SG"], 2.5, 3.6],
+        ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 2.5, 3.6],
         12,
-        ["case", ["==", ["get", "country"], "SG"], 4.2, 5.2],
+        ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 4.2, 5.2],
       ],
       "circle-color": ["get", "color"],
       "circle-opacity": 0.88,

@@ -23,7 +23,7 @@ function generateSampleData(): { stations: Station[]; edges: Edge[] } {
     return a + (b - a) * t;
   }
 
-  function interpolateStations(id1: string, id2: string, lat1: number, lng1: number, lat2: number, lng2: number, steps: number, prefix: string, country: "MY" | "SG", agency: string): Station[] {
+  function interpolateStations(id1: string, id2: string, lat1: number, lng1: number, lat2: number, lng2: number, steps: number, prefix: string, country: "MY" | "SG" | "TH", agency: string): Station[] {
     const result: Station[] = [];
     for (let i = 1; i < steps; i++) {
       const t = i / steps;

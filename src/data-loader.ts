@@ -3,7 +3,7 @@ export interface StationData {
   name: string;
   lat: number;
   lng: number;
-  country: "MY" | "SG";
+  country: "MY" | "SG" | "TH";
 }
 
 export interface IsochroneFeature {

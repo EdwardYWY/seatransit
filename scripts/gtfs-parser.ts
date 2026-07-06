@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "fs";
 import { basename, join } from "path";
 import AdmZip from "adm-zip";
-import { parseCSV, timeToMinutes, type Station, type Edge, type AgencyConfig, AGENCIES } from "./utils";
+import { parseCSV, timeToMinutes, haversineKm, type Station, type Edge, type AgencyConfig, AGENCIES } from "./utils";
 
 interface RawStop {
   stop_id: string;
@@ -112,7 +112,10 @@ export function parseAgencyZip(zipPath: string, config: AgencyConfig): { station
 
   const shouldKeepTrip = (tripId: string): boolean => {
     if (config.routeTypeFilter === undefined) return true;
-    return tripRouteTypeMap.get(tripId) === config.routeTypeFilter;
+    const routeType = tripRouteTypeMap.get(tripId);
+    return Array.isArray(config.routeTypeFilter)
+      ? config.routeTypeFilter.includes(routeType ?? NaN)
+      : routeType === config.routeTypeFilter;
   };
 
   const tripStopTimes = new Map<string, RawStopTime[]>();
@@ -154,11 +157,21 @@ export function parseAgencyZip(zipPath: string, config: AgencyConfig): { station
       const cur = times[i];
       const next = times[i + 1];
       if (!cur.arrival_time || !next.arrival_time) continue;
-      const dur = timeToMinutes(next.arrival_time) - timeToMinutes(cur.departure_time || cur.arrival_time);
-      if (dur <= 0 || dur > 1440) continue;
       const fromStation = stationMap.get(cur.stop_id);
       const toStation = stationMap.get(next.stop_id);
       if (!fromStation || !toStation) continue;
+
+      let dur = timeToMinutes(next.arrival_time) - timeToMinutes(cur.departure_time || cur.arrival_time);
+      if ((dur <= 0 || dur > 1440) && config.id === "thrail") {
+        // The Namtang rail feed has several long-distance train stop_times with
+        // placeholder 00:xx times that create zero/negative segment durations.
+        // Keep the structural rail graph useful by estimating those segments
+        // from station distance at a conservative intercity speed.
+        const distanceKm = haversineKm(fromStation.lat, fromStation.lng, toStation.lat, toStation.lng);
+        dur = Math.max(2, Math.round((distanceKm / 70) * 60));
+      }
+      if (dur <= 0 || dur > 1440) continue;
+
       edges.push({
         fromId: fromStation.id,
         toId: toStation.id,

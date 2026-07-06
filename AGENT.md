@@ -32,7 +32,7 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
   - `ktm-19100.json` (default KL Sentral isochrones)
   - `travel-times.json`
 - `npm run build` currently succeeds, with a Vite chunk-size warning because MapLibre/Turf are bundled.
-- `npm run build-data` currently parses KTM and Rapid KL GTFS from data.gov.my plus an unofficial Singapore rail GTFS feed listed by Transitland.
+- `npm run build-data` currently parses KTM and Rapid KL GTFS from data.gov.my, an unofficial Singapore rail GTFS feed listed by Transitland, and Thailand rail from Namtang GTFS.
 
 ### Important current behavior
 
@@ -59,15 +59,24 @@ Observed when running `npm run build-data`:
   - Transitland feed page: `https://www.transit.land/feeds/f-w21z-lta`
   - This feed includes bus and rail; `routeTypeFilter: 1` keeps rail trips/stops only.
 - Because KTM/Rapid KL/SG rail parse now succeeds, the sample/demo fallback is no longer used unless every agency fails.
+- Thailand rail uses Namtang GTFS:
+  - `https://namtang-api.otp.go.th/download/namtang-gtfs.zip`
+  - The feed is multimodal; `routeTypeFilter: [1, 2]` keeps train-like route types only.
+  - Several long-distance Thai rail trips have placeholder `00:xx` stop times; parser estimates invalid/zero Thai rail segment durations from station distance at 70 km/h.
 - Current output after `build-data` is about:
-  - 568 stations
-  - 378 MY stations, 190 SG stations
+  - 863 stations
+  - 378 MY stations, 190 SG stations, 295 TH stations
   - 10 KL Sentral isochrone bands
-  - 568 origins in `travel-times.json`
-- KL Sentral now reaches all 190 SG stations in `travel-times.json`; nearest SG rail stations are about 357-360 minutes from KL Sentral under current static modeling.
-- Path modeling fix increased Dijkstra default `maxHops` to 240 and adds two known KTM connector edges:
+  - 863 origins in `travel-times.json`
+- KL Sentral now reaches all 190 SG stations and all 295 TH stations in `travel-times.json`.
+- Singapore Woodlands MRT is about 359 minutes from KL Sentral under current static modeling.
+- Hat Yai Junction is about 334 minutes from KL Sentral; farthest imported Thai rail station is about 1566 minutes from KL Sentral.
+- Singapore can reach Thailand: Woodlands MRT (`sgmrt:NS9`) reaches all 295 Thai rail stations; Hat Yai Junction is about 693 minutes from Woodlands.
+- Path modeling fix increased Dijkstra default `maxHops` to 240 and adds known connector edges:
   - `ktm:25100` Pulau Sebang/Tampin ↔ `ktm:27800` Gemas, because KTM GTFS separates KL-area services from southern Intercity services.
   - `ktm:37400` Holiday Plaza ↔ `ktm:36900` Kempas Bahru, because KTM stop_times references missing stop_id `37200` between them.
+  - `ktm:47300` Padang Besar ↔ `thrail:17003` Hat Yai Junction, because the Thailand feed lacks a Padang Besar stop.
+  - `ktm:86300` Tumpat ↔ `thrail:17015` Su-Ngai Kolok, eastern MY/TH rail border.
 
 Do not describe the project as using authoritative live GTFS data until the parser/download issues are fixed and validated.
 

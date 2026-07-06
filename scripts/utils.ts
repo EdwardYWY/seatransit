@@ -3,8 +3,8 @@ export interface Station {
   name: string;
   lat: number;
   lng: number;
-  country: "MY" | "SG";
-  agency: "ktm" | "rapidkl" | "sgmrt";
+  country: "MY" | "SG" | "TH";
+  agency: "ktm" | "rapidkl" | "sgmrt" | "thrail";
 }
 
 export interface Edge {
@@ -20,8 +20,8 @@ export interface AgencyConfig {
   id: "ktm" | "rapidkl" | "sgmrt";
   name: string;
   url: string;
-  country: "MY" | "SG";
-  routeTypeFilter?: number;
+  country: "MY" | "SG" | "TH";
+  routeTypeFilter?: number | number[];
 }
 
 export const AGENCIES: AgencyConfig[] = [
@@ -45,6 +45,15 @@ export const AGENCIES: AgencyConfig[] = [
     url: "https://cdn.rushowl.app/rushtrail-app/gtfs-feed/gtfs-feed-lta.zip",
     country: "SG",
     routeTypeFilter: 1,
+  },
+  {
+    id: "thrail",
+    name: "Thailand Rail",
+    // Public Namtang GTFS feed. It is multimodal, so keep train-like route
+    // types only (1 subway/metro and 2 rail) for this rail reachability app.
+    url: "https://namtang-api.otp.go.th/download/namtang-gtfs.zip",
+    country: "TH",
+    routeTypeFilter: [1, 2],
   },
 ];
 
