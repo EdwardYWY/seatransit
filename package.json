@@ -12,10 +12,12 @@
   },
   "dependencies": {
     "@turf/turf": "^7.1.0",
+    "adm-zip": "^0.5.18",
     "maplibre-gl": "^4.7.0",
     "polygon-clipping": "^0.15.7"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^22.0.0",
     "gh-pages": "^6.3.0",
     "node-fetch": "^3.3.0",

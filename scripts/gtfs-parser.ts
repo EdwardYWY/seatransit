@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join } from "path";
-import { parseCSV, timeToMinutes, haversineKm, type Station, type Edge, type AgencyConfig, AGENCIES } from "./utils";
+import { existsSync, mkdirSync } from "fs";
+import { basename, join } from "path";
+import AdmZip from "adm-zip";
+import { parseCSV, timeToMinutes, type Station, type Edge, type AgencyConfig, AGENCIES } from "./utils";
 
 interface RawStop {
   stop_id: string;
@@ -39,61 +40,18 @@ interface RawFrequency {
 
 function parseGTFSZip(zipPath: string): Record<string, Record<string, string>[]> {
   const files: Record<string, Record<string, string>[]> = {};
-  try {
-    const zlib = require("zlib");
-    const { spawnSync } = require("child_process");
+  const zip = new AdmZip(zipPath);
 
-    const zipData = readFileSync(zipPath);
-    const filesInZip: string[] = [];
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    if (!entry.entryName.toLowerCase().endsWith(".txt")) continue;
+    if (entry.entryName.includes("__MACOSX/") || basename(entry.entryName).startsWith("._")) continue;
 
-    const result = spawnSync("python3", [
-      "-c",
-      `
-import zipfile, sys, json
-z = zipfile.ZipFile(sys.argv[1])
-print(json.dumps(z.namelist()))
-      `,
-      zipPath,
-    ]);
-
-    if (result.status === 0) {
-      const names = JSON.parse(result.stdout.toString());
-      for (const name of names) {
-        if (name.endsWith(".txt")) {
-          const content = spawnSync("python3", [
-            "-c",
-            `
-import zipfile, sys
-z = zipfile.ZipFile(sys.argv[1])
-print(z.read(sys.argv[2]).decode('utf-8'))
-            `,
-            zipPath,
-            name,
-          ]);
-          if (content.status === 0) {
-            const key = name.replace(".txt", "");
-            files[key] = parseCSV(content.stdout.toString());
-          }
-        }
-      }
-    }
-    return files;
-  } catch {
-    try {
-      const AdmZip = require("adm-zip");
-      const zip = new AdmZip(zipPath);
-      const entries = zip.getEntries();
-      for (const entry of entries) {
-        if (entry.entryName.endsWith(".txt")) {
-          const key = entry.entryName.replace(".txt", "");
-          files[key] = parseCSV(entry.getData().toString("utf-8"));
-        }
-      }
-      return files;
-    } catch {
-      return files;
-    }
+    const key = basename(entry.entryName, ".txt");
+    files[key] = parseCSV(entry.getData().toString("utf-8"));
   }
+
+  return files;
 }
 
 async function downloadFile(url: string, dest: string): Promise<void> {

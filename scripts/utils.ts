@@ -72,19 +72,49 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
 }
 
 export function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim());
-  const rows: Record<string, string>[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(",").map((v) => v.trim());
-    const row: Record<string, string> = {};
-    headers.forEach((h, j) => {
-      row[h] = vals[j] ?? "";
-    });
-    rows.push(row);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  const input = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    const next = input[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        field += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      row.push(field.trim());
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") i++;
+      row.push(field.trim());
+      if (row.some((value) => value.length > 0)) rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
   }
-  return rows;
+
+  row.push(field.trim());
+  if (row.some((value) => value.length > 0)) rows.push(row);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map((h) => h.trim().replace(/^\uFEFF/, ""));
+  return rows.slice(1).map((values) => {
+    const record: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      record[header] = values[index] ?? "";
+    });
+    return record;
+  });
 }
 
 export function timeToMinutes(t: string): number {

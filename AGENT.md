@@ -32,7 +32,7 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
   - `ktm-19100.json` (default KL Sentral isochrones)
   - `travel-times.json`
 - `npm run build` currently succeeds, with a Vite chunk-size warning because MapLibre/Turf are bundled.
-- `npm run build-data` currently completes by falling back to sample/demo data.
+- `npm run build-data` currently parses KTM and Rapid KL GTFS from data.gov.my, but Singapore MRT still fails because the configured URL returns 404.
 
 ### Important current behavior
 
@@ -52,17 +52,17 @@ The GTFS pipeline is not production-grade yet.
 
 Observed when running `npm run build-data`:
 
-- KTM download returns a zip file, but parser reports missing required GTFS files.
-- Rapid KL download returns a zip file, but parser reports missing required GTFS files.
-- Singapore MRT URL in `scripts/utils.ts` currently returns 404:
+- KTM GTFS downloads and parses successfully.
+- Rapid KL GTFS downloads and parses successfully.
+- Singapore MRT URL in `scripts/utils.ts` still returns 404:
   - `https://storage.googleapis.com/sg-mrt-gtfs/gtfs-static.zip`
-- Because no agency data is parsed, `scripts/build-data.ts` falls back to embedded sample/demo data.
-- Current sample output after `build-data` is about:
-  - 113 stations
-  - 94 MY stations, 19 SG stations
+- Because KTM/Rapid KL parse now succeeds, the sample/demo fallback is no longer used unless every agency fails.
+- Current real MY-only output after `build-data` is about:
+  - 378 stations
+  - 378 MY stations, 0 SG stations
   - 10 KL Sentral isochrone bands
-  - 113 origins in `travel-times.json`
-- Sample SG connectivity is incomplete/fragile: KL Sentral isochrone station counts plateau at 93 stations, so not all sample stations are reachable within 48h under current graph/hop constraints.
+  - 378 origins in `travel-times.json`
+- Singapore is currently absent from generated station data until a valid SG MRT source is configured.
 
 Do not describe the project as using authoritative live GTFS data until the parser/download issues are fixed and validated.
 
@@ -113,12 +113,6 @@ This is the largest correctness gap.
 
 Things to inspect/fix:
 
-- The data.gov.my endpoints may return nested zip structures, redirects, or nonstandard filenames. Inspect `data/ktm.zip` and `data/rapidkl.zip` with Python/zip tooling before changing logic.
-- `parseGTFSZip` currently shells out to `python3`; on Windows this may not exist or may behave differently. Use a robust Node zip dependency or a reliable cross-platform approach.
-- `parseCSV` is too naive for GTFS CSV:
-  - no quoted-comma support
-  - no BOM stripping
-  - no multiline quoted-field handling
 - Singapore MRT source URL is stale. Find and replace with a current source, or commit a known-good static fixture with license/attribution.
 - Route filtering logic in `gtfs-parser.ts` has an unused `filteredTripIds` block; clean this up.
 - Station filtering for Singapore parent/child stops is not implemented.
