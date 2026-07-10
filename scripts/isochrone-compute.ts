@@ -1,4 +1,5 @@
 import type { Graph, Station } from "./utils";
+import type { Feature, MultiPolygon, Polygon } from "geojson";
 import { dijkstra } from "./graph";
 import {
   buffer,
@@ -10,9 +11,6 @@ import {
   multiPolygon,
   coordEach,
   clone,
-  type Feature,
-  type Polygon,
-  type MultiPolygon,
 } from "@turf/turf";
 import polygonClipping from "polygon-clipping";
 
@@ -81,7 +79,9 @@ export function computeIsochrones(
 
     const geoms: polygonClipping.Geom[] = [];
     geomEach(fc, (geom) => {
-      geoms.push(geom.coordinates as polygonClipping.Geom);
+      if ("coordinates" in geom) {
+        geoms.push(geom.coordinates as polygonClipping.Geom);
+      }
     });
 
     let isoGeometry: Feature<Polygon | MultiPolygon> | null = null;

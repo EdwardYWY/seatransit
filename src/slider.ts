@@ -36,11 +36,21 @@ export function setupSlider(onChange: (bandMinutes: number, bandIndex: number) =
     const minutes = getTimeBandValue(idx);
     updateTrack();
     updateLegendActive(idx);
+    slider.setAttribute("aria-valuetext", formatDurationForAria(minutes));
     onChange(minutes, idx);
   };
 
   slider.addEventListener("input", update);
   update();
+}
+
+function formatDurationForAria(minutes: number): string {
+  if (minutes === 0) return "0 hours";
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (remainder === 0) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  return `${hours} ${hours === 1 ? "hour" : "hours"} ${remainder} minutes`;
 }
 
 export function updateLegendActive(bandIndex: number): void {

@@ -1,13 +1,13 @@
 # seatransit
 
-An interactive map showing how far you can go by train from any station in Malaysia and Singapore.
+An interactive map showing approximate train reachability from stations across Malaysia, Singapore, and Thailand.
 
 Inspired by [Chronotrains](https://www.chronotrains.com). The isochrone algorithm is adapted from [benjamintd/chronotrains](https://github.com/benjamintd/chronotrains) (MIT license).
 
 ## Features
 
 - **Isochrone map** — see the area reachable within 1h, 2h, 4h, 8h, 24h, and 48h from any station
-- **Multi-network** — KTM intercity, Rapid KL urban rail, and Singapore MRT
+- **Multi-network** — KTM intercity, Rapid KL urban rail, Singapore MRT, and Thailand rail
 - **Station search** — find and jump to any station
 - **Time slider** — adjust the time window and watch the reachable area expand
 - **Static deploy** — everything is pre-computed; no server required
@@ -19,6 +19,9 @@ Inspired by [Chronotrains](https://www.chronotrains.com). The isochrone algorith
 | KTM | Peninsular Malaysia | [data.gov.my](https://api.data.gov.my/gtfs-static/ktmb) |
 | Rapid KL | Klang Valley | [data.gov.my](https://api.data.gov.my/gtfs-static/prasarana) |
 | Singapore MRT | Singapore | Community GTFS |
+| Thailand Rail | Thailand | Namtang GTFS |
+
+Reachability uses static GTFS snapshots and modeling approximations. It is not live journey-planning data.
 
 ## Development
 

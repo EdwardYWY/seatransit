@@ -16,29 +16,29 @@
     </nav>
   </header>
   <div id="map"></div>
-  <div id="loading">Loading data...</div>
-  <div id="error"></div>
+  <div id="loading" role="status" aria-live="polite">Loading data...</div>
+  <div id="error" role="alert"></div>
   <section id="control-panel" aria-label="Reachability controls">
-    <h1>How far can you go by train from KL Sentral?</h1>
+    <h1 id="origin-heading">How far can you go by train from KL Sentral?</h1>
     <div class="panel-body">
       <div class="panel-actions">
-        <button type="button" class="icon-button" aria-label="Zoom out">−</button>
-        <button type="button" class="icon-button" aria-label="Zoom in">+</button>
+        <button type="button" class="icon-button" data-map-action="zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" class="icon-button" data-map-action="zoom-in" aria-label="Zoom in">+</button>
         <div id="search-overlay">
-          <input id="search-input" type="text" placeholder="Other station..." autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-label="Search stations">
+          <input id="search-input" type="text" placeholder="Other station..." autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-autocomplete="list" aria-controls="search-results" aria-label="Search stations">
           <div id="search-results" role="listbox"></div>
         </div>
       </div>
       <div id="slider-overlay">
         <div id="slider-value">Reachable in 4h — loading...</div>
-        <input type="range" id="time-slider" min="0" max="10" value="4" step="1">
+        <input type="range" id="time-slider" min="0" max="10" value="4" step="1" aria-label="Maximum travel time" aria-valuetext="4 hours">
         <div id="slider-labels">
           <span>0h</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span>
           <span>6h</span><span>8h</span><span>12h</span><span>24h</span><span>36h</span><span>48h</span>
         </div>
       </div>
     </div>
-    <div class="data-note">Uses static GTFS snapshots for Malaysia, Singapore, and Thailand</div>
+    <div class="data-note" title="Colored areas are approximate station-centered access zones, not exact rail corridors.">Approximate station access zones from static GTFS snapshots · not live journey planning</div>
   </section>
   <div id="legend">
     <div class="row" data-band="1"><span class="swatch" style="background:#D96B52"></span> 0-1h</div>

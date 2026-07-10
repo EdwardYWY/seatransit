@@ -16,7 +16,7 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
   - `src/main.ts` wires map, stations, search, slider, and station loading.
   - `src/map.ts` creates a MapLibre map using CARTO Voyager raster tiles with stronger label contrast.
   - `src/stations.ts` renders small MapLibre circle-layer station markers, high-zoom station labels, and search.
-  - `src/dynamic-isochrones.ts` builds short-term dynamic station-buffer isochrone bands in the browser from `stations.json` + `travel-times.json`.
+  - `src/dynamic-isochrones.ts` builds short-term dynamic station-buffer isochrone bands in the browser from `stations.json` plus one per-origin file in `travel-times/`.
   - `src/isochrones.ts` removes/re-adds MapLibre fill/line layers for visible bands.
   - `src/slider.ts` uses a discrete 10-position slider for time bands.
   - `src/data-loader.ts` fetches static JSON from `data/` and maps station IDs to filenames by replacing `:` with `-`.
@@ -29,22 +29,20 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
   - `scripts/utils.ts` has shared types, agency URLs, CSV parsing, distance, and time helpers.
 - Static generated data currently exists in `public/data/`:
   - `stations.json`
-  - `station-lookup.json`
-  - `ktm-19100.json` (default KL Sentral isochrones)
-  - `travel-times.json`
+  - `travel-times/*.json` (one small file per origin)
 - `npm run build` currently succeeds, with a Vite chunk-size warning because MapLibre/Turf are bundled.
 - `npm run build-data` currently parses KTM and Rapid KL GTFS from data.gov.my, an unofficial Singapore rail GTFS feed listed by Transitland, and Thailand rail from Namtang GTFS.
 
 ### Important current behavior
 
 - Default origin is `ktm:19100` / KL Sentral.
-- Default isochrone filename is `public/data/ktm-19100.json`, not `kl-sentral.json`, but the frontend currently uses dynamic isochrone rendering for all origins instead of fetching per-station isochrone files.
+- The frontend builds dynamic isochrones for all origins instead of fetching per-station isochrone GeoJSON.
 - Clicking or searching another station switches the origin, recomputes dynamic isochrone bands in the browser, updates station visibility, and flies the map to the selected station.
 - The slider is discrete:
   - HTML range: `min="0" max="10" step="1"`
   - indexes map to `[0,60,120,180,240,360,480,720,1440,2160,2880]`
   - the 0-minute state hides all isochrone bands and shows only the origin marker.
-- `travel-times.json` is generated for every origin. The frontend uses it to hide station markers that are not reachable from the current origin at the current slider time and to build dynamic isochrone bands/counts.
+- A file in `travel-times/` is generated for every origin. The frontend loads origins on demand, caches them in memory, and uses the active origin to filter markers and build dynamic isochrone bands/counts.
 - Map tiles use CARTO Voyager raster tiles based on OpenStreetMap data.
 
 ## Data reality and limitations
@@ -68,8 +66,8 @@ Observed when running `npm run build-data`:
   - 863 stations
   - 378 MY stations, 190 SG stations, 295 TH stations
   - 10 KL Sentral isochrone bands
-  - 863 origins in `travel-times.json`
-- KL Sentral now reaches all 190 SG stations and all 295 TH stations in `travel-times.json`.
+  - 863 per-origin files in `travel-times/`
+- KL Sentral now reaches all 190 SG stations and all 295 TH stations in `travel-times/ktm-19100.json`.
 - Singapore Woodlands MRT is about 359 minutes from KL Sentral under current static modeling.
 - Hat Yai Junction is about 334 minutes from KL Sentral; farthest imported Thai rail station is about 1566 minutes from KL Sentral.
 - Singapore can reach Thailand: Woodlands MRT (`sgmrt:NS9`) reaches all 295 Thai rail stations; Hat Yai Junction is about 693 minutes from Woodlands.
@@ -117,9 +115,7 @@ Before claiming anything is fixed, validate in browser with `npm run dev` or `np
 - Improve selected-station UX:
   - Marker highlighting/pulsing is not currently implemented despite earlier plans.
   - Current station click opens popup and triggers origin load.
-- Make search behavior intentional:
-  - It currently matches `includes`, not prefix/autocomplete from `station-lookup.json`.
-  - `station-lookup.json` is generated but not used by frontend.
+- Keep search behavior intentional: exact and prefix matches should rank ahead of substring matches, and duplicate names must show network/station codes.
 
 ### 2. Fix the GTFS ingestion pipeline
 
@@ -141,7 +137,7 @@ Next improvements:
 
 - Tune station-buffer sizes/opacities so bands feel organic but do not imply impossible ocean/land coverage.
 - Consider rail-corridor geometry or a Web Worker if dynamic rendering becomes heavier at Laos/China scale.
-- Keep `public/data/` limited to the shared JSON assets unless there is a clear reason to add precomputed popular-origin files.
+- Keep `public/data/` limited to shared assets and the lightweight per-origin travel-time files unless there is a clear reason to add precomputed isochrone files.
 
 ### 4. Improve reachability correctness
 
@@ -179,33 +175,12 @@ Array<{
 }>
 ```
 
-### Isochrone JSON
-
-Per-origin file named by `safeFilename(station.id)`, where `:` becomes `-`.
-
-Example: `ktm:19100` -> `public/data/ktm-19100.json`
-
-```ts
-{
-  type: "FeatureCollection",
-  features: Array<{
-    type: "Feature",
-    geometry: { type: "Polygon" | "MultiPolygon"; coordinates: unknown },
-    properties: {
-      duration: number;
-      fillColor: string;
-      stationCount: number;
-    }
-  }>
-}
-```
-
 ### Travel times JSON
 
-`public/data/travel-times.json`:
+Each origin has a file at `public/data/travel-times/{safeFilename(originId)}.json`:
 
 ```ts
-Record<originStationId, Record<destinationStationId, minutes>>
+Record<destinationStationId, minutes>
 ```
 
 ## Coding notes

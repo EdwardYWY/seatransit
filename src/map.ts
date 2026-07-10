@@ -36,9 +36,10 @@ export function createMap(container: HTMLElement): maplibregl.Map {
     zoom: 6,
     minZoom: 4,
     maxZoom: 14,
+    dragRotate: false,
   });
 
-  map.addControl(new maplibregl.NavigationControl(), "top-right");
+  map.touchZoomRotate.disableRotation();
   map.addControl(new maplibregl.ScaleControl(), "bottom-right");
 
   return map;

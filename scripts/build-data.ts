@@ -1,9 +1,8 @@
-import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { downloadAllAgencies } from "./gtfs-parser";
 import { buildGraph, dijkstra } from "./graph";
-import { computeIsochrones } from "./isochrone-compute";
 import { type Station, type Edge } from "./utils";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,7 +22,7 @@ function generateSampleData(): { stations: Station[]; edges: Edge[] } {
     return a + (b - a) * t;
   }
 
-  function interpolateStations(id1: string, id2: string, lat1: number, lng1: number, lat2: number, lng2: number, steps: number, prefix: string, country: "MY" | "SG" | "TH", agency: string): Station[] {
+  function interpolateStations(id1: string, id2: string, lat1: number, lng1: number, lat2: number, lng2: number, steps: number, prefix: string, country: "MY" | "SG" | "TH", agency: Station["agency"]): Station[] {
     const result: Station[] = [];
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
@@ -360,29 +359,14 @@ async function main() {
   }));
   writeFileSync(join(PUBLIC_DIR, "stations.json"), JSON.stringify(stationsOutput));
 
-  console.log("Writing station-lookup.json...");
-  const lookup: Record<string, string> = {};
-  for (const s of stations) {
-    const key = s.name.toLowerCase();
-    if (!lookup[key]) lookup[key] = s.id;
-  }
-  writeFileSync(join(PUBLIC_DIR, "station-lookup.json"), JSON.stringify(lookup));
-
   function safeFilename(id: string): string {
     return id.replace(/:/g, "-");
   }
 
-  const defaultStation = stations.find((s) => s.id === "ktm:19100") || stations[0];
-  console.log(`\nComputing default isochrones for ${defaultStation.name} (${defaultStation.id})...`);
-  const isochrones = computeIsochrones(defaultStation.id, defaultStation.name, graph, stations);
-  writeFileSync(
-    join(PUBLIC_DIR, `${safeFilename(defaultStation.id)}.json`),
-    JSON.stringify(isochrones)
-  );
-  console.log(`  ${isochrones.features.length} isochrone bands written`);
-
-  console.log("\nComputing travel-times.json...");
-  const travelTimes: Record<string, Record<string, number>> = {};
+  console.log("\nComputing per-origin travel times...");
+  const travelTimesDir = join(PUBLIC_DIR, "travel-times");
+  if (existsSync(travelTimesDir)) rmSync(travelTimesDir, { recursive: true, force: true });
+  ensureDir(travelTimesDir);
   let count = 0;
   for (const station of stations) {
     const { distances } = dijkstra(station.id, graph, 2880);
@@ -392,12 +376,11 @@ async function main() {
         times[id] = dist;
       }
     }
-    travelTimes[station.id] = times;
+    writeFileSync(join(travelTimesDir, `${safeFilename(station.id)}.json`), JSON.stringify(times));
     count++;
     if (count % 10 === 0) console.log(`  ${count}/${stations.length} stations processed`);
   }
-  writeFileSync(join(PUBLIC_DIR, "travel-times.json"), JSON.stringify(travelTimes));
-  console.log(`  Travel times for ${Object.keys(travelTimes).length} origin stations`);
+  console.log(`  Travel times for ${count} origin stations`);
 
   console.log("\n=== Build complete! ===");
   console.log(`Output: ${PUBLIC_DIR}`);

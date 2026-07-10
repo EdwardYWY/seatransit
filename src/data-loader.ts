@@ -8,10 +8,7 @@ export interface StationData {
 
 export interface IsochroneFeature {
   type: "Feature";
-  geometry: {
-    type: "Polygon" | "MultiPolygon";
-    coordinates: number[][][] | number[][][][];
-  };
+  geometry: Polygon | MultiPolygon;
   properties: {
     duration: number;
     fillColor: string;
@@ -24,20 +21,10 @@ export interface IsochroneCollection {
   features: IsochroneFeature[];
 }
 
-export interface TravelTimes {
-  [fromId: string]: {
-    [toId: string]: number;
-  };
-}
-
-export interface StationLookup {
-  [name: string]: string;
-}
+export type OriginTravelTimes = Record<string, number>;
 
 let cachedStations: StationData[] | null = null;
-let cachedIsochrones: Map<string, IsochroneCollection> = new Map();
-let cachedTravelTimes: TravelTimes | null = null;
-let cachedLookup: StationLookup | null = null;
+const cachedTravelTimes = new Map<string, OriginTravelTimes>();
 
 function safeFilename(id: string): string {
   return id.replace(/:/g, "-");
@@ -46,32 +33,18 @@ function safeFilename(id: string): string {
 export async function loadStations(): Promise<StationData[]> {
   if (cachedStations) return cachedStations;
   const resp = await fetch("data/stations.json");
+  if (!resp.ok) throw new Error(`Station data request failed (${resp.status})`);
   cachedStations = await resp.json();
   return cachedStations!;
 }
 
-export async function loadIsochrones(stationId: string): Promise<IsochroneCollection> {
-  const cached = cachedIsochrones.get(stationId);
+export async function loadTravelTimes(stationId: string): Promise<OriginTravelTimes> {
+  const cached = cachedTravelTimes.get(stationId);
   if (cached) return cached;
-  const resp = await fetch(`data/${safeFilename(stationId)}.json`);
-  if (!resp.ok) {
-    return { type: "FeatureCollection", features: [] };
-  }
-  const data: IsochroneCollection = await resp.json();
-  cachedIsochrones.set(stationId, data);
+  const resp = await fetch(`data/travel-times/${safeFilename(stationId)}.json`);
+  if (!resp.ok) throw new Error(`Travel-time data request failed (${resp.status})`);
+  const data: OriginTravelTimes = await resp.json();
+  cachedTravelTimes.set(stationId, data);
   return data;
 }
-
-export async function loadTravelTimes(): Promise<TravelTimes> {
-  if (cachedTravelTimes) return cachedTravelTimes;
-  const resp = await fetch("data/travel-times.json");
-  cachedTravelTimes = await resp.json();
-  return cachedTravelTimes!;
-}
-
-export async function loadStationLookup(): Promise<StationLookup> {
-  if (cachedLookup) return cachedLookup;
-  const resp = await fetch("data/station-lookup.json");
-  cachedLookup = await resp.json();
-  return cachedLookup!;
-}
+import type { MultiPolygon, Polygon } from "geojson";

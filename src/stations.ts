@@ -3,6 +3,7 @@ import type { StationData } from "./data-loader";
 
 export interface StationMarkerController {
   setReachableStationIds(ids: Set<string>): void;
+  setSelectedStationId(id: string): void;
 }
 
 export function addStationMarkers(
@@ -25,9 +26,19 @@ export function addStationMarkers(
     },
   }));
 
-  const makeGeojson = (ids?: Set<string>): GeoJSON.FeatureCollection => ({
+  let reachableIds: Set<string> | undefined;
+  let selectedStationId: string | undefined;
+
+  const makeGeojson = (ids = reachableIds): GeoJSON.FeatureCollection => ({
     type: "FeatureCollection",
-    features: ids ? allFeatures.filter((feature) => ids.has(String(feature.properties.id))) : allFeatures,
+    features: (ids ? allFeatures.filter((feature) => ids.has(String(feature.properties.id))) : allFeatures)
+      .map((feature) => ({
+        ...feature,
+        properties: {
+          ...feature.properties,
+          selected: feature.properties.id === selectedStationId,
+        },
+      })),
   });
 
   map.addSource("stations", {
@@ -45,15 +56,23 @@ export function addStationMarkers(
         ["linear"],
         ["zoom"],
         5,
-        ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 1.8, 2.6],
+        ["case", ["get", "selected"], 8, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 1.8, 2.6]],
         8,
-        ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 2.5, 3.6],
+        ["case", ["get", "selected"], 8, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 2.5, 3.6]],
         12,
-        ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 4.2, 5.2],
+        ["case", ["get", "selected"], 8, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 4.2, 5.2]],
       ],
-      "circle-color": ["get", "color"],
+      "circle-color": ["case", ["get", "selected"], "#0f172a", ["get", "color"]],
       "circle-opacity": 0.88,
-      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 5, 0.6, 10, 1.1],
+      "circle-stroke-width": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        5,
+        ["case", ["get", "selected"], 3, 0.6],
+        10,
+        ["case", ["get", "selected"], 3, 1.1],
+      ],
       "circle-stroke-color": "#ffffff",
       "circle-stroke-opacity": 0.9,
     },
@@ -98,14 +117,25 @@ export function addStationMarkers(
 
   return {
     setReachableStationIds(ids: Set<string>) {
+      reachableIds = ids;
       const source = map.getSource("stations") as maplibregl.GeoJSONSource | undefined;
       source?.setData(makeGeojson(ids));
+    },
+    setSelectedStationId(id: string) {
+      selectedStationId = id;
+      const source = map.getSource("stations") as maplibregl.GeoJSONSource | undefined;
+      source?.setData(makeGeojson());
     },
   };
 }
 
-function displayStationName(name: string): string {
-  return name.split(";").pop()?.trim() || name.trim();
+export function displayStationName(name: string): string {
+  const displayName = name.split(";").pop()?.trim() || name.trim();
+  if (displayName !== displayName.toUpperCase()) return displayName;
+  return displayName
+    .split(/\s+/)
+    .map((part) => part.length <= 3 ? part : `${part[0]}${part.slice(1).toLowerCase()}`)
+    .join(" ");
 }
 
 export function setupStationSearch(
@@ -124,30 +154,46 @@ export function setupStationSearch(
     kbIndex = -1;
     results.innerHTML = "";
 
-    for (const station of matches) {
+    matches.forEach((station, index) => {
       const div = document.createElement("div");
-      div.textContent = `${displayStationName(station.name)} (${station.country})`;
+      div.id = `station-option-${index}`;
+      div.textContent = stationResultLabel(station);
       div.setAttribute("role", "option");
+      div.setAttribute("aria-selected", "false");
       div.addEventListener("click", () => {
         selectStation(station);
       });
       results.appendChild(div);
-    }
+    });
   }
 
   function updateKbHighlight() {
     const items = results.querySelectorAll("div");
     items.forEach((el, i) => {
-      el.classList.toggle("keyboard-focus", i === kbIndex);
+      const selected = i === kbIndex;
+      el.classList.toggle("keyboard-focus", selected);
+      el.setAttribute("aria-selected", String(selected));
     });
+    if (kbIndex >= 0) {
+      input.setAttribute("aria-activedescendant", `station-option-${kbIndex}`);
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  function closeResults() {
+    results.innerHTML = "";
+    results.classList.remove("visible");
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+    filtered = [];
+    kbIndex = -1;
   }
 
   function selectStation(station: StationData) {
     onSelect(station);
-    results.innerHTML = "";
-    results.classList.remove("visible");
+    closeResults();
     input.value = displayStationName(station.name);
-    input.setAttribute("aria-expanded", "false");
   }
 
   input.addEventListener("input", () => {
@@ -155,19 +201,25 @@ export function setupStationSearch(
     results.innerHTML = "";
     filtered = [];
     kbIndex = -1;
+    input.removeAttribute("aria-activedescendant");
     if (q.length < 1) {
-      results.classList.remove("visible");
-      input.setAttribute("aria-expanded", "false");
+      closeResults();
       return;
     }
 
     const matches = stations
-      .filter((s) => s.name.toLowerCase().includes(q))
+      .filter((s) => displayStationName(s.name).toLowerCase().includes(q))
+      .sort((a, b) => searchRank(a, q) - searchRank(b, q) || displayStationName(a.name).localeCompare(displayStationName(b.name)))
       .slice(0, 10);
 
     if (matches.length === 0) {
-      results.classList.remove("visible");
-      input.setAttribute("aria-expanded", "false");
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.setAttribute("role", "status");
+      empty.textContent = "No stations found";
+      results.appendChild(empty);
+      results.classList.add("visible");
+      input.setAttribute("aria-expanded", "true");
       return;
     }
 
@@ -181,28 +233,46 @@ export function setupStationSearch(
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      kbIndex = Math.min(kbIndex + 1, filtered.length - 1);
+      if (filtered.length === 0) return;
+      kbIndex = (kbIndex + 1) % filtered.length;
       updateKbHighlight();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      kbIndex = Math.max(kbIndex - 1, 0);
+      if (filtered.length === 0) return;
+      kbIndex = kbIndex <= 0 ? filtered.length - 1 : kbIndex - 1;
       updateKbHighlight();
     } else if (e.key === "Enter" && kbIndex >= 0) {
       e.preventDefault();
       selectStation(filtered[kbIndex]);
     } else if (e.key === "Escape") {
-      results.innerHTML = "";
-      results.classList.remove("visible");
-      input.setAttribute("aria-expanded", "false");
-      kbIndex = -1;
+      closeResults();
     }
   });
 
   document.addEventListener("click", (e) => {
     if (!results.contains(e.target as Node) && e.target !== input) {
-      results.innerHTML = "";
-      results.classList.remove("visible");
-      input.setAttribute("aria-expanded", "false");
+      closeResults();
     }
   });
+}
+
+function searchRank(station: StationData, query: string): number {
+  const name = displayStationName(station.name).toLowerCase();
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  return 2;
+}
+
+function stationResultLabel(station: StationData): string {
+  const [network, code = ""] = station.id.split(":");
+  const networkLabels: Record<string, string> = {
+    ktm: "KTM",
+    sgmrt: "Singapore MRT",
+    rapidkl: "Rapid KL",
+    thrail: "Thailand Rail",
+  };
+  const details = [station.country, networkLabels[network] || network.toUpperCase(), code]
+    .filter(Boolean)
+    .join(" · ");
+  return `${displayStationName(station.name)} (${details})`;
 }

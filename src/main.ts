@@ -1,7 +1,7 @@
 import "./style.css";
 import { createMap } from "./map";
-import { addStationMarkers, setupStationSearch } from "./stations";
-import { renderIsochrones, removeIsochrones } from "./isochrones";
+import { addStationMarkers, displayStationName, setupStationSearch } from "./stations";
+import { renderIsochrones } from "./isochrones";
 import { buildDynamicIsochrones } from "./dynamic-isochrones";
 import { setupSlider, updateSliderValue, formatDuration, getTimeBandValue } from "./slider";
 import {
@@ -9,7 +9,7 @@ import {
   loadTravelTimes,
   type StationData,
   type IsochroneCollection,
-  type TravelTimes,
+  type OriginTravelTimes,
 } from "./data-loader";
 
 async function main() {
@@ -18,23 +18,27 @@ async function main() {
 
   const mapContainer = document.getElementById("map")!;
   const map = createMap(mapContainer);
+  document.querySelector<HTMLElement>('[data-map-action="zoom-in"]')
+    ?.addEventListener("click", () => map.zoomIn());
+  document.querySelector<HTMLElement>('[data-map-action="zoom-out"]')
+    ?.addEventListener("click", () => map.zoomOut());
   if (import.meta.env.DEV) {
     (window as unknown as { __seatransitMap?: typeof map }).__seatransitMap = map;
   }
 
   let currentStation: StationData;
   let currentIsochrones: IsochroneCollection | null = null;
-  let currentTravelTimes: TravelTimes = {};
+  let currentTravelTimes: OriginTravelTimes = {};
   let allStations: StationData[] = [];
   let markerController: ReturnType<typeof addStationMarkers> | null = null;
   let stationCountCache: Map<number, number> = new Map();
+  let stationLoadRequest = 0;
 
   function reachableStationIdsFor(station: StationData, maxMinutes: number): Set<string> {
     const reachable = new Set<string>([station.id]);
     if (maxMinutes <= 0) return reachable;
 
-    const timesFromOrigin = currentTravelTimes[station.id] || {};
-    for (const [stationId, minutes] of Object.entries(timesFromOrigin)) {
+    for (const [stationId, minutes] of Object.entries(currentTravelTimes)) {
       if (minutes <= maxMinutes) reachable.add(stationId);
     }
     return reachable;
@@ -60,22 +64,36 @@ async function main() {
 
   function setSummary(station: StationData, maxMinutes: number) {
     const count = stationCountFor(maxMinutes);
-    updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} stations`);
-    document.getElementById("info-overlay")!.textContent = `Origin: ${displayStationName(station)}`;
+    const stationName = displayStationName(station.name);
+    updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} ${count === 1 ? "station" : "stations"}`);
+    document.getElementById("info-overlay")!.textContent = `Origin: ${stationName}`;
+    document.getElementById("origin-heading")!.textContent = `How far can you go by train from ${stationName}?`;
   }
 
   async function loadStation(station: StationData) {
-    currentStation = station;
-    loadingEl.style.display = "block";
-    loadingEl.textContent = "Loading isochrones...";
+    const requestId = ++stationLoadRequest;
+    loadingEl.style.display = "flex";
+    loadingEl.textContent = `Loading ${displayStationName(station.name)}...`;
+    errorEl.classList.remove("visible");
 
-    map.flyTo({
-      center: [station.lng, station.lat],
-      zoom: station.id === "ktm:19100" ? 6.6 : 8,
-      duration: 1000,
-    });
-
-    currentIsochrones = buildDynamicIsochrones(station, allStations, currentTravelTimes);
+    try {
+      const travelTimes = await loadTravelTimes(station.id);
+      if (requestId !== stationLoadRequest) return;
+      currentStation = station;
+      currentTravelTimes = travelTimes;
+      currentIsochrones = buildDynamicIsochrones(station, allStations, travelTimes);
+      map.flyTo({
+        center: [station.lng, station.lat],
+        zoom: station.id === "ktm:19100" ? 6.6 : 8,
+        duration: 1000,
+      });
+    } catch (err) {
+      if (requestId !== stationLoadRequest) return;
+      loadingEl.style.display = "none";
+      errorEl.textContent = `Failed to load ${displayStationName(station.name)}: ${err instanceof Error ? err.message : String(err)}`;
+      errorEl.classList.add("visible");
+      return;
+    }
 
     loadingEl.style.display = "none";
 
@@ -89,6 +107,7 @@ async function main() {
     const maxMinutes = getTimeBandValue(currentIdx);
 
     renderIsochrones(map, currentIsochrones, maxMinutes);
+    markerController?.setSelectedStationId(station.id);
     updateReachableMarkers(maxMinutes);
 
     setSummary(station, maxMinutes);
@@ -96,23 +115,17 @@ async function main() {
 
   map.on("load", async () => {
     try {
-      const [stations, travelTimes] = await Promise.all([
-        loadStations(),
-        loadTravelTimes(),
-      ]);
-      currentTravelTimes = travelTimes;
+      const stations = await loadStations();
       allStations = stations;
       loadingEl.style.display = "none";
 
       markerController = addStationMarkers(map, stations, async (station) => {
         if (currentStation?.id !== station.id) {
-          removeIsochrones(map);
           await loadStation(station);
         }
       });
 
       setupStationSearch(stations, async (station) => {
-        removeIsochrones(map);
         await loadStation(station);
       });
 
@@ -132,10 +145,6 @@ async function main() {
       errorEl.classList.add("visible");
     }
   });
-}
-
-function displayStationName(station: StationData): string {
-  return station.name.split(";").pop()?.trim() || station.name.trim();
 }
 
 main().catch(console.error);

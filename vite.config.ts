@@ -4,5 +4,13 @@ export default defineConfig({
   base: "./",
   build: {
     outDir: "dist",
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          maplibre: ["maplibre-gl"],
+        },
+      },
+    },
   },
 });

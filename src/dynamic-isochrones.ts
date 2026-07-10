@@ -1,4 +1,4 @@
-import type { IsochroneCollection, IsochroneFeature, StationData, TravelTimes } from "./data-loader";
+import type { IsochroneCollection, IsochroneFeature, OriginTravelTimes, StationData } from "./data-loader";
 
 const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
 const LOCAL_ACCESS_SPEED_KM_PER_MIN = 0.04;
@@ -8,10 +8,9 @@ const CIRCLE_STEPS = 8;
 export function buildDynamicIsochrones(
   origin: StationData,
   stations: StationData[],
-  travelTimes: TravelTimes
+  timesFromOrigin: OriginTravelTimes
 ): IsochroneCollection {
   const stationMap = new Map(stations.map((station) => [station.id, station]));
-  const timesFromOrigin = travelTimes[origin.id] || {};
   const features: IsochroneFeature[] = [];
 
   for (let i = 0; i < TIME_BANDS.length; i++) {

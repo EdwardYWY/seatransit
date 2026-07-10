@@ -62,10 +62,10 @@ async function downloadFile(url: string, dest: string): Promise<void> {
   const body = response.body;
   if (!body) throw new Error("No response body");
   const fileStream = createWriteStream(dest);
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     body.pipe(fileStream);
     body.on("error", reject);
-    fileStream.on("finish", resolve);
+    fileStream.on("finish", () => resolve());
   });
 }
 
@@ -89,11 +89,11 @@ export async function downloadAndParseAgency(config: AgencyConfig, dataDir: stri
 
 export function parseAgencyZip(zipPath: string, config: AgencyConfig): { stations: Station[]; edges: Edge[] } {
   const files = parseGTFSZip(zipPath);
-  const stops = files["stops"] as RawStop[] | undefined;
-  const stopTimes = files["stop_times"] as RawStopTime[] | undefined;
-  const trips = files["trips"] as RawTrip[] | undefined;
-  const routes = files["routes"] as RawRoute[] | undefined;
-  const frequencies = files["frequencies"] as RawFrequency[] | undefined;
+  const stops = files["stops"] as unknown as RawStop[] | undefined;
+  const stopTimes = files["stop_times"] as unknown as RawStopTime[] | undefined;
+  const trips = files["trips"] as unknown as RawTrip[] | undefined;
+  const routes = files["routes"] as unknown as RawRoute[] | undefined;
+  const frequencies = files["frequencies"] as unknown as RawFrequency[] | undefined;
 
   if (!stops || !stopTimes || !trips || !routes) {
     console.warn(`Missing required GTFS files in ${config.name}`);

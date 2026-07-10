@@ -25,7 +25,7 @@ seatransit/
 │   └── data/                   # Static JSON files (committed to repo)
 │       ├── stations.json       # All stations: {id, name, lat, lng, country}
 │       ├── kl-sentral.json     # Isochrones for KL Sentral
-│       └── travel-times.json   # from_station: {to_station: minutes}
+│       └── travel-times/       # one {to_station: minutes} JSON file per origin
 ├── index.html
 ├── package.json
 ├── tsconfig.json
@@ -201,9 +201,8 @@ Output files written to `public/data/`:
 | File | Size (est.) | Contents |
 |------|-------------|----------|
 | `stations.json` | ~20 KB | Array of all stations with id, name, lat, lng, country |
-| `station-lookup.json` | ~15 KB | Name → station ID index for search |
 | `kl-sentral.json` | ~100-300 KB | GeoJSON FeatureCollection with 10 isochrone polygons |
-| `travel-times.json` | ~100-200 KB | `{ "from_id": { "to_id": minutes, ... }, ... }` |
+| `travel-times/*.json` | typically 5-25 KB each | `{ "to_id": minutes, ... }` for one origin |
 
 ## Frontend
 
