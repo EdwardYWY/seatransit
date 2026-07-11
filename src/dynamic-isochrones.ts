@@ -14,21 +14,19 @@ export function buildDynamicIsochrones(
   const stationMap = new Map(stations.map((station) => [station.id, station]));
   const features: IsochroneFeature[] = [];
 
-  for (let i = 0; i < TIME_BANDS.length; i++) {
-    const minTime = i === 0 ? -1 : TIME_BANDS[i - 1];
-    const maxTime = TIME_BANDS[i];
-    const stationsInBand: Array<{ station: StationData; time: number }> = [];
-
-    if (minTime < 0) stationsInBand.push({ station: origin, time: 0 });
+  for (const maxTime of TIME_BANDS) {
+    const reachableStations: Array<{ station: StationData; time: number }> = [
+      { station: origin, time: 0 },
+    ];
 
     for (const [stationId, time] of Object.entries(timesFromOrigin)) {
-      if (time <= minTime || time > maxTime) continue;
+      if (time > maxTime) continue;
       const station = stationMap.get(stationId);
-      if (station) stationsInBand.push({ station, time });
+      if (station) reachableStations.push({ station, time });
     }
 
     const polygons: number[][][][] = [];
-    for (const { station, time } of stationsInBand) {
+    for (const { station, time } of reachableStations) {
       const remaining = Math.max(maxTime - time, INTERCHANGE_TIME);
       const radius = Math.min(
         remaining * LOCAL_ACCESS_SPEED_KM_PER_MIN,
@@ -45,7 +43,7 @@ export function buildDynamicIsochrones(
       const toTime = to.id === origin.id ? 0 : timesFromOrigin[to.id];
       if (fromTime === undefined || toTime === undefined) continue;
       const segmentTime = Math.max(fromTime, toTime);
-      if (segmentTime <= minTime || segmentTime > maxTime) continue;
+      if (segmentTime > maxTime) continue;
       const corridor = corridorPolygon(from, to, corridorBufferKm(maxTime));
       if (corridor) polygons.push(corridor);
     }
@@ -149,16 +147,16 @@ function corridorPolygon(from: StationData, to: StationData, radiusKm: number): 
 
 function getColorForBand(duration: number): string {
   const colors: Record<number, string> = {
-    60: "#7A284B",
-    120: "#A13A55",
-    180: "#C4515D",
-    240: "#DE6E62",
-    360: "#EA8D67",
-    480: "#F0AD6D",
-    720: "#F2CB78",
-    1440: "#D8D886",
-    2160: "#A9D39B",
-    2880: "#73C3AF",
+    60: "#6D214F",
+    120: "#8D2F57",
+    180: "#AE3E5C",
+    240: "#CA5361",
+    360: "#DF6D65",
+    480: "#EC896A",
+    720: "#F2A66F",
+    1440: "#F5C27A",
+    2160: "#F6D78B",
+    2880: "#F7E8A5",
   };
   return colors[duration] || "#333333";
 }

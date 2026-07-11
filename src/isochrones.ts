@@ -17,8 +17,7 @@ export function renderIsochrones(
   filtered.sort((a, b) => b.properties.duration - a.properties.duration);
   const beforeLayer = map.getLayer("station-circles") ? "station-circles" : undefined;
 
-  for (let i = 0; i < filtered.length; i++) {
-    const feature = filtered[i];
+  for (const feature of filtered) {
     const duration = feature.properties.duration;
     const color = feature.properties.fillColor;
     const layerId = `isochrone-${duration}`;
@@ -35,18 +34,7 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": 0.44,
-      },
-    }, beforeLayer);
-
-    map.addLayer({
-      id: `${layerId}-border`,
-      type: "line",
-      source: subSourceId,
-      paint: {
-        "line-color": color,
-        "line-opacity": 0.62,
-        "line-width": i === filtered.length - 1 ? 2 : 1.2,
+        "fill-opacity": 0.34,
       },
     }, beforeLayer);
   }
