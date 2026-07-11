@@ -6,6 +6,13 @@ const TRANSFER_TIME = 15;
 const BORDER_TIME = 60;
 const DEFAULT_MAX_HOPS = 240;
 
+export const KNOWN_RAIL_CONNECTORS: ReadonlyArray<readonly [string, string, number, string]> = [
+  ["ktm:25100", "ktm:27800", 45, "Pulau Sebang/Tampin ↔ Gemas"],
+  ["ktm:37400", "ktm:36900", 10, "Holiday Plaza ↔ Kempas Bahru"],
+  ["ktm:47300", "thrail:17003", 60, "Padang Besar ↔ Hat Yai Junction"],
+  ["ktm:86300", "thrail:17015", 60, "Tumpat ↔ Su-Ngai Kolok"],
+];
+
 export function buildGraph(stations: Station[], edges: Edge[]): Graph {
   const graph: Graph = new Map();
 
@@ -85,26 +92,8 @@ function addTransferEdges(graph: Graph, stations: Station[]): void {
 
 function addKnownRailConnectorEdges(graph: Graph, stations: Station[]): void {
   const stationIds = new Set(stations.map((s) => s.id));
-  const connectors: Array<[string, string, number, string]> = [
-    // KTM's current GTFS separates KL-area Komuter/ETS services from the
-    // southern Intercity services that start at Gemas. Without this physical
-    // rail corridor gap, KL can never reach Johor/Singapore even within 48h.
-    ["ktm:25100", "ktm:27800", 45, "Pulau Sebang/Tampin ↔ Gemas"],
-    // KTM stop_times references stop_id 37200 between Holiday Plaza and Kempas
-    // Bahru, but that stop is currently absent from stops.txt. Bridge over the
-    // missing stop so the southern line remains connected to JB Sentral.
-    ["ktm:37400", "ktm:36900", 10, "Holiday Plaza ↔ Kempas Bahru"],
-    // Cross-border rail is present operationally but not joined between feeds.
-    // Padang Besar is the main MY/TH interchange; Namtang currently lacks a
-    // Padang Besar rail stop, so connect to Hat Yai Junction as the nearest
-    // major Thai rail node on this feed.
-    ["ktm:47300", "thrail:17003", 60, "Padang Besar ↔ Hat Yai Junction"],
-    // Eastern border interchange for the Jungle Line / southern Thailand.
-    ["ktm:86300", "thrail:17015", 60, "Tumpat ↔ Su-Ngai Kolok"],
-  ];
-
   let added = 0;
-  for (const [fromId, toId, minutes] of connectors) {
+  for (const [fromId, toId, minutes] of KNOWN_RAIL_CONNECTORS) {
     if (!stationIds.has(fromId) || !stationIds.has(toId)) continue;
     addEdge(graph, fromId, toId, minutes);
     added++;

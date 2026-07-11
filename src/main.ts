@@ -6,7 +6,9 @@ import { buildDynamicIsochrones } from "./dynamic-isochrones";
 import { setupSlider, updateSliderValue, formatDuration, getTimeBandValue } from "./slider";
 import {
   loadStations,
+  loadRailSegments,
   loadTravelTimes,
+  type RailSegment,
   type StationData,
   type IsochroneCollection,
   type OriginTravelTimes,
@@ -30,6 +32,7 @@ async function main() {
   let currentIsochrones: IsochroneCollection | null = null;
   let currentTravelTimes: OriginTravelTimes = {};
   let allStations: StationData[] = [];
+  let allRailSegments: RailSegment[] = [];
   let markerController: ReturnType<typeof addStationMarkers> | null = null;
   let stationCountCache: Map<number, number> = new Map();
   let stationLoadRequest = 0;
@@ -81,7 +84,7 @@ async function main() {
       if (requestId !== stationLoadRequest) return;
       currentStation = station;
       currentTravelTimes = travelTimes;
-      currentIsochrones = buildDynamicIsochrones(station, allStations, travelTimes);
+      currentIsochrones = buildDynamicIsochrones(station, allStations, allRailSegments, travelTimes);
       map.flyTo({
         center: [station.lng, station.lat],
         zoom: station.id === "ktm:19100" ? 6.6 : 8,
@@ -115,8 +118,9 @@ async function main() {
 
   map.on("load", async () => {
     try {
-      const stations = await loadStations();
+      const [stations, railSegments] = await Promise.all([loadStations(), loadRailSegments()]);
       allStations = stations;
+      allRailSegments = railSegments;
       loadingEl.style.display = "none";
 
       markerController = addStationMarkers(map, stations, async (station) => {

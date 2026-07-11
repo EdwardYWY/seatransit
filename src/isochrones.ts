@@ -15,6 +15,7 @@ export function renderIsochrones(
   );
 
   filtered.sort((a, b) => b.properties.duration - a.properties.duration);
+  const beforeLayer = map.getLayer("station-circles") ? "station-circles" : undefined;
 
   for (let i = 0; i < filtered.length; i++) {
     const feature = filtered[i];
@@ -34,9 +35,9 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": 0.38,
+        "fill-opacity": 0.44,
       },
-    });
+    }, beforeLayer);
 
     map.addLayer({
       id: `${layerId}-border`,
@@ -44,10 +45,10 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "line-color": color,
-        "line-opacity": 0.28,
-        "line-width": i === filtered.length - 1 ? 1.4 : 0.8,
+        "line-opacity": 0.62,
+        "line-width": i === filtered.length - 1 ? 2 : 1.2,
       },
-    });
+    }, beforeLayer);
   }
 }
 

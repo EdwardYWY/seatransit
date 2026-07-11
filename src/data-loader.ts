@@ -23,7 +23,13 @@ export interface IsochroneCollection {
 
 export type OriginTravelTimes = Record<string, number>;
 
+export interface RailSegment {
+  fromId: string;
+  toId: string;
+}
+
 let cachedStations: StationData[] | null = null;
+let cachedRailSegments: RailSegment[] | null = null;
 const cachedTravelTimes = new Map<string, OriginTravelTimes>();
 
 function safeFilename(id: string): string {
@@ -46,5 +52,13 @@ export async function loadTravelTimes(stationId: string): Promise<OriginTravelTi
   const data: OriginTravelTimes = await resp.json();
   cachedTravelTimes.set(stationId, data);
   return data;
+}
+
+export async function loadRailSegments(): Promise<RailSegment[]> {
+  if (cachedRailSegments) return cachedRailSegments;
+  const resp = await fetch("data/rail-segments.json");
+  if (!resp.ok) throw new Error(`Rail-segment data request failed (${resp.status})`);
+  cachedRailSegments = await resp.json();
+  return cachedRailSegments!;
 }
 import type { MultiPolygon, Polygon } from "geojson";

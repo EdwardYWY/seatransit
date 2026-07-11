@@ -6,7 +6,7 @@ Inspired by [Chronotrains](https://www.chronotrains.com). The isochrone algorith
 
 ## Features
 
-- **Isochrone map** — see the area reachable within 1h, 2h, 4h, 8h, 24h, and 48h from any station
+- **Isochrone map** — see approximate rail-corridor and station-access coverage within 1h to 48h from any station
 - **Multi-network** — KTM intercity, Rapid KL urban rail, Singapore MRT, and Thailand rail
 - **Station search** — find and jump to any station
 - **Time slider** — adjust the time window and watch the reachable area expand

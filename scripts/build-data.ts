@@ -2,7 +2,7 @@ import { writeFileSync, mkdirSync, existsSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { downloadAllAgencies } from "./gtfs-parser";
-import { buildGraph, dijkstra } from "./graph";
+import { buildGraph, dijkstra, KNOWN_RAIL_CONNECTORS } from "./graph";
 import { type Station, type Edge } from "./utils";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -358,6 +358,23 @@ async function main() {
     country: s.country,
   }));
   writeFileSync(join(PUBLIC_DIR, "stations.json"), JSON.stringify(stationsOutput));
+
+  console.log("Writing rail-segments.json...");
+  const stationIds = new Set(stations.map((station) => station.id));
+  const segmentKeys = new Set<string>();
+  const railSegments: Array<{ fromId: string; toId: string }> = [];
+  const addRailSegment = (fromId: string, toId: string) => {
+    if (fromId === toId || !stationIds.has(fromId) || !stationIds.has(toId)) return;
+    const [a, b] = fromId < toId ? [fromId, toId] : [toId, fromId];
+    const key = `${a}|${b}`;
+    if (segmentKeys.has(key)) return;
+    segmentKeys.add(key);
+    railSegments.push({ fromId: a, toId: b });
+  };
+  for (const edge of edges) addRailSegment(edge.fromId, edge.toId);
+  for (const [fromId, toId] of KNOWN_RAIL_CONNECTORS) addRailSegment(fromId, toId);
+  writeFileSync(join(PUBLIC_DIR, "rail-segments.json"), JSON.stringify(railSegments));
+  console.log(`  ${railSegments.length} unique rail segments written`);
 
   function safeFilename(id: string): string {
     return id.replace(/:/g, "-");

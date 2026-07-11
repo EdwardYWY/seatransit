@@ -63,7 +63,17 @@ export function addStationMarkers(
         ["case", ["get", "selected"], 8, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 4.2, 5.2]],
       ],
       "circle-color": ["case", ["get", "selected"], "#0f172a", ["get", "color"]],
-      "circle-opacity": 0.88,
+      "circle-opacity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        4,
+        ["case", ["get", "selected"], 0.98, 0.16],
+        7,
+        ["case", ["get", "selected"], 0.98, 0.48],
+        10,
+        ["case", ["get", "selected"], 0.98, 0.88],
+      ],
       "circle-stroke-width": [
         "interpolate",
         ["linear"],
@@ -74,7 +84,17 @@ export function addStationMarkers(
         ["case", ["get", "selected"], 3, 1.1],
       ],
       "circle-stroke-color": "#ffffff",
-      "circle-stroke-opacity": 0.9,
+      "circle-stroke-opacity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        4,
+        ["case", ["get", "selected"], 1, 0.2],
+        7,
+        ["case", ["get", "selected"], 1, 0.58],
+        10,
+        ["case", ["get", "selected"], 1, 0.9],
+      ],
     },
   });
 

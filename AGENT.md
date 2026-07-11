@@ -16,7 +16,7 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
   - `src/main.ts` wires map, stations, search, slider, and station loading.
   - `src/map.ts` creates a MapLibre map using CARTO Voyager raster tiles with stronger label contrast.
   - `src/stations.ts` renders small MapLibre circle-layer station markers, high-zoom station labels, and search.
-  - `src/dynamic-isochrones.ts` builds short-term dynamic station-buffer isochrone bands in the browser from `stations.json` plus one per-origin file in `travel-times/`.
+  - `src/dynamic-isochrones.ts` builds dynamic rail-corridor and station-access isochrone bands from `rail-segments.json`, `stations.json`, and one per-origin file in `travel-times/`.
   - `src/isochrones.ts` removes/re-adds MapLibre fill/line layers for visible bands.
   - `src/slider.ts` uses a discrete 10-position slider for time bands.
   - `src/data-loader.ts` fetches static JSON from `data/` and maps station IDs to filenames by replacing `:` with `-`.
@@ -30,6 +30,7 @@ The app is deployable as static files: data is generated into `public/data/`, Vi
 - Static generated data currently exists in `public/data/`:
   - `stations.json`
   - `travel-times/*.json` (one small file per origin)
+  - `rail-segments.json` (deduplicated GTFS rail edges plus explicit cross-feed connectors)
 - `npm run build` currently succeeds, with a Vite chunk-size warning because MapLibre/Turf are bundled.
 - `npm run build-data` currently parses KTM and Rapid KL GTFS from data.gov.my, an unofficial Singapore rail GTFS feed listed by Transitland, and Thailand rail from Namtang GTFS.
 
