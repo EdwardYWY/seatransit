@@ -154,16 +154,16 @@ function corridorPolygon(from: StationData, to: StationData, fromRadiusKm: numbe
 
 function getColorForBand(duration: number): string {
   const colors: Record<number, string> = {
-    60: "#6D214F",
-    120: "#8D2F57",
-    180: "#AE3E5C",
-    240: "#CA5361",
-    360: "#DF6D65",
-    480: "#EC896A",
-    720: "#F2A66F",
-    1440: "#F5C27A",
-    2160: "#F6D78B",
-    2880: "#F7E8A5",
+    60: "#440154",
+    120: "#482878",
+    180: "#3e4989",
+    240: "#31688e",
+    360: "#26828e",
+    480: "#1f9e89",
+    720: "#35b779",
+    1440: "#6ece58",
+    2160: "#b5de2b",
+    2880: "#fde725",
   };
   return colors[duration] || "#333333";
 }

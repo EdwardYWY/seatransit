@@ -39,7 +39,7 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": 0.3,
+        "fill-opacity": 0.62,
       },
     }, beforeLayer);
 
@@ -51,7 +51,7 @@ export function renderIsochrones(
         "line-color": color,
         "line-width": 5,
         "line-blur": 4,
-        "line-opacity": 0.22,
+        "line-opacity": 0.18,
       },
     }, beforeLayer);
   }

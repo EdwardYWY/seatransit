@@ -1,5 +1,5 @@
 const TIME_BANDS = [0, 60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
-const BAND_COLORS = ["#94a3b8", "#6D214F", "#8D2F57", "#AE3E5C", "#CA5361", "#DF6D65", "#EC896A", "#F2A66F", "#F5C27A", "#F6D78B", "#F7E8A5"];
+const BAND_COLORS = ["#94a3b8", "#440154", "#482878", "#3e4989", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#fde725"];
 
 export function getTimeBandValue(index: number): number {
   const safeIndex = Math.max(0, Math.min(index, TIME_BANDS.length - 1));
