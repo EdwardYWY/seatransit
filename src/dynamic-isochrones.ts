@@ -1,7 +1,7 @@
 import type { IsochroneCollection, IsochroneFeature, OriginTravelTimes, RailSegment, StationData } from "./data-loader";
 
 const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
-const LOCAL_ACCESS_SPEED_KM_PER_MIN = 0.12;
+const MIN_RADIUS_KM = 1.5;
 const INTERCHANGE_TIME = 10;
 const CIRCLE_STEPS = 20;
 
@@ -27,11 +27,7 @@ export function buildDynamicIsochrones(
 
     const polygons: number[][][][] = [];
     for (const { station, time } of reachableStations) {
-      const remaining = Math.max(maxTime - time, INTERCHANGE_TIME);
-      const radius = Math.min(
-        remaining * LOCAL_ACCESS_SPEED_KM_PER_MIN,
-        maxStationBufferKm(maxTime, station.id === origin.id)
-      );
+      const radius = accessRadiusKm(maxTime, time, maxStationBufferKm(maxTime, station.id === origin.id));
       polygons.push(circlePolygon(station.lng, station.lat, radius));
     }
 
@@ -44,7 +40,10 @@ export function buildDynamicIsochrones(
       if (fromTime === undefined || toTime === undefined) continue;
       const segmentTime = Math.max(fromTime, toTime);
       if (segmentTime > maxTime) continue;
-      const corridor = corridorPolygon(from, to, corridorBufferKm(maxTime));
+      const cap = corridorBufferKm(maxTime);
+      const fromRadius = accessRadiusKm(maxTime, fromTime, cap);
+      const toRadius = accessRadiusKm(maxTime, toTime, cap);
+      const corridor = corridorPolygon(from, to, fromRadius, toRadius);
       if (corridor) polygons.push(corridor);
     }
 
@@ -65,6 +64,14 @@ export function buildDynamicIsochrones(
   }
 
   return { type: "FeatureCollection", features };
+}
+
+// Reach around a station grows smoothly with the time left in the band, so areas
+// near the frontier taper off instead of ending as uniform blobs.
+function accessRadiusKm(maxTime: number, arrivalTime: number, capKm: number): number {
+  const remaining = Math.max(maxTime - arrivalTime, 0);
+  const tau = Math.max(maxTime * 0.3, 20);
+  return Math.max(MIN_RADIUS_KM, capKm * (1 - Math.exp(-(remaining + INTERCHANGE_TIME) / tau)));
 }
 
 function reachableCountFor(timesFromOrigin: Record<string, number>, maxTime: number): number {
@@ -114,7 +121,7 @@ function corridorBufferKm(duration: number): number {
   return 16;
 }
 
-function corridorPolygon(from: StationData, to: StationData, radiusKm: number): number[][][] | null {
+function corridorPolygon(from: StationData, to: StationData, fromRadiusKm: number, toRadiusKm: number): number[][][] | null {
   const kmPerLatDegree = 111.32;
   const avgLatRad = ((from.lat + to.lat) * Math.PI) / 360;
   const kmPerLngDegree = Math.max(20, kmPerLatDegree * Math.cos(avgLatRad));
@@ -126,7 +133,7 @@ function corridorPolygon(from: StationData, to: StationData, radiusKm: number): 
   const heading = Math.atan2(dy, dx);
   const capSteps = 8;
   const ring: number[][] = [];
-  const appendPoint = (centerX: number, centerY: number, angle: number) => {
+  const appendPoint = (centerX: number, centerY: number, angle: number, radiusKm: number) => {
     const x = centerX + Math.cos(angle) * radiusKm;
     const y = centerY + Math.sin(angle) * radiusKm;
     ring.push([
@@ -136,10 +143,10 @@ function corridorPolygon(from: StationData, to: StationData, radiusKm: number): 
   };
 
   for (let i = 0; i <= capSteps; i++) {
-    appendPoint(0, 0, heading + Math.PI / 2 + (i * Math.PI) / capSteps);
+    appendPoint(0, 0, heading + Math.PI / 2 + (i * Math.PI) / capSteps, fromRadiusKm);
   }
   for (let i = 0; i <= capSteps; i++) {
-    appendPoint(dx, dy, heading - Math.PI / 2 + (i * Math.PI) / capSteps);
+    appendPoint(dx, dy, heading - Math.PI / 2 + (i * Math.PI) / capSteps, toRadiusKm);
   }
   ring.push([...ring[0]]);
   return [ring];

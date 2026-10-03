@@ -1,4 +1,5 @@
 const TIME_BANDS = [0, 60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
+const BAND_COLORS = ["#94a3b8", "#6D214F", "#8D2F57", "#AE3E5C", "#CA5361", "#DF6D65", "#EC896A", "#F2A66F", "#F5C27A", "#F6D78B", "#F7E8A5"];
 
 export function getTimeBandValue(index: number): number {
   const safeIndex = Math.max(0, Math.min(index, TIME_BANDS.length - 1));
@@ -29,6 +30,7 @@ export function setupSlider(onChange: (bandMinutes: number, bandIndex: number) =
     const value = Number(slider.value) || 0;
     const pct = (value / max) * 100;
     slider.style.setProperty("--slider-progress", `${pct}%`);
+    slider.style.setProperty("--slider-fill", BAND_COLORS[Math.max(0, Math.min(value, BAND_COLORS.length - 1))]);
   };
 
   const update = () => {

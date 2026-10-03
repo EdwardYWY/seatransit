@@ -15,7 +15,12 @@ export function renderIsochrones(
   );
 
   filtered.sort((a, b) => b.properties.duration - a.properties.duration);
-  const beforeLayer = map.getLayer("station-circles") ? "station-circles" : undefined;
+  // Draw under roads and labels so the basemap stays readable.
+  const beforeLayer = map.getLayer("building")
+    ? "building"
+    : map.getLayer("station-circles")
+      ? "station-circles"
+      : undefined;
 
   for (const feature of filtered) {
     const duration = feature.properties.duration;
@@ -37,7 +42,36 @@ export function renderIsochrones(
         "fill-opacity": 0.3,
       },
     }, beforeLayer);
+
+    map.addLayer({
+      id: `${layerId}-edge`,
+      type: "line",
+      source: subSourceId,
+      paint: {
+        "line-color": color,
+        "line-width": 5,
+        "line-blur": 4,
+        "line-opacity": 0.22,
+      },
+    }, beforeLayer);
   }
+
+  addWaterMask(map, beforeLayer);
+}
+
+// Re-draw the basemap's water on top of the bands so coverage never shows over the sea.
+function addWaterMask(map: maplibregl.Map, beforeLayer: string | undefined): void {
+  const water = map.getLayer("water");
+  if (!water || water.type !== "fill") return;
+  const color = map.getPaintProperty("water", "fill-color") as string | undefined;
+  map.addLayer({
+    id: "isochrone-water-mask",
+    type: "fill",
+    source: water.source as string,
+    "source-layer": (water as unknown as { sourceLayer: string }).sourceLayer,
+    filter: map.getFilter("water") ?? undefined,
+    paint: { "fill-color": color ?? "#d4dadc" },
+  }, beforeLayer);
 }
 
 export function removeIsochrones(map: maplibregl.Map): void {

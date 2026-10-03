@@ -133,8 +133,7 @@ async function main() {
   function setSummary(station: StationData, maxMinutes: number) {
     const count = stationCountFor(maxMinutes);
     const stationName = displayStationName(station.name);
-    updateSliderValue(`Reachable in ${formatDuration(maxMinutes)} — ${count} ${count === 1 ? "station" : "stations"}`);
-    document.getElementById("info-overlay")!.textContent = `Origin: ${stationName}`;
+    updateSliderValue(maxMinutes <= 0 ? "Origin only" : `Within ${formatDuration(maxMinutes)} · ${count} ${count === 1 ? "station" : "stations"}`);
     document.getElementById("origin-heading")!.textContent = `How far can you go by train from ${stationName}?`;
   }
 
