@@ -34,7 +34,7 @@ export function renderIsochrones(
       source: subSourceId,
       paint: {
         "fill-color": color,
-        "fill-opacity": 0.34,
+        "fill-opacity": 0.3,
       },
     }, beforeLayer);
   }

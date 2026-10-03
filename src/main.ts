@@ -1,4 +1,6 @@
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
+import maplibregl from "maplibre-gl";
 import { createMap } from "./map";
 import { addStationMarkers, displayStationName, setupStationSearch } from "./stations";
 import { renderIsochrones } from "./isochrones";
@@ -20,10 +22,6 @@ async function main() {
 
   const mapContainer = document.getElementById("map")!;
   const map = createMap(mapContainer);
-  document.querySelector<HTMLElement>('[data-map-action="zoom-in"]')
-    ?.addEventListener("click", () => map.zoomIn());
-  document.querySelector<HTMLElement>('[data-map-action="zoom-out"]')
-    ?.addEventListener("click", () => map.zoomOut());
   if (import.meta.env.DEV) {
     (window as unknown as { __seatransitMap?: typeof map }).__seatransitMap = map;
   }
@@ -36,6 +34,73 @@ async function main() {
   let markerController: ReturnType<typeof addStationMarkers> | null = null;
   let stationCountCache: Map<number, number> = new Map();
   let stationLoadRequest = 0;
+
+  const slider = document.getElementById("time-slider") as HTMLInputElement;
+  const playButton = document.getElementById("play-button") as HTMLButtonElement;
+  const stopButton = document.getElementById("stop-button") as HTMLButtonElement;
+  let playTimer: number | undefined;
+
+  function setSliderIndex(index: number) {
+    slider.value = String(index);
+    slider.dispatchEvent(new Event("input"));
+  }
+
+  function stopPlayback() {
+    if (playTimer !== undefined) window.clearInterval(playTimer);
+    playTimer = undefined;
+    playButton.classList.remove("playing");
+    playButton.textContent = "▶";
+    playButton.setAttribute("aria-label", "Play time animation");
+  }
+
+  function startPlayback() {
+    const max = Number(slider.max);
+    if (Number(slider.value) >= max) setSliderIndex(0);
+    playButton.classList.add("playing");
+    playButton.textContent = "❚❚";
+    playButton.setAttribute("aria-label", "Pause time animation");
+    playTimer = window.setInterval(() => {
+      const next = Number(slider.value) + 1;
+      setSliderIndex(next);
+      if (next >= max) stopPlayback();
+    }, 900);
+  }
+
+  playButton.addEventListener("click", () => (playTimer === undefined ? startPlayback() : stopPlayback()));
+  stopButton.addEventListener("click", () => {
+    stopPlayback();
+    setSliderIndex(0);
+  });
+  slider.addEventListener("pointerdown", stopPlayback);
+
+  function writeHash(stationId: string, bandIndex: number) {
+    const hash = `#s=${encodeURIComponent(stationId)}&t=${bandIndex}`;
+    if (location.hash !== hash) history.replaceState(null, "", hash);
+  }
+
+  function readHash(): { stationId?: string; band?: number } {
+    const params = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const band = Number(params.get("t"));
+    return {
+      stationId: params.get("s") ?? undefined,
+      band: params.has("t") && Number.isInteger(band) && band >= 0 && band <= Number(slider.max) ? band : undefined,
+    };
+  }
+
+  function fitToReachable(station: StationData, maxMinutes: number, times: OriginTravelTimes) {
+    const limit = maxMinutes > 0 ? maxMinutes : 240;
+    const bounds = new maplibregl.LngLatBounds([station.lng, station.lat], [station.lng, station.lat]);
+    for (const s of allStations) {
+      const t = times[s.id];
+      if (t !== undefined && t <= limit) bounds.extend([s.lng, s.lat]);
+    }
+    const mobile = window.innerWidth <= 760;
+    map.fitBounds(bounds, {
+      padding: { top: mobile ? 250 : 200, bottom: mobile ? 90 : 60, left: 40, right: 40 },
+      maxZoom: 9,
+      duration: 1000,
+    });
+  }
 
   function reachableStationIdsFor(station: StationData, maxMinutes: number): Set<string> {
     const reachable = new Set<string>([station.id]);
@@ -85,11 +150,7 @@ async function main() {
       currentStation = station;
       currentTravelTimes = travelTimes;
       currentIsochrones = buildDynamicIsochrones(station, allStations, allRailSegments, travelTimes);
-      map.flyTo({
-        center: [station.lng, station.lat],
-        zoom: station.id === "ktm:19100" ? 6.6 : 8,
-        duration: 1000,
-      });
+      fitToReachable(station, getTimeBandValue(parseInt(slider.value)), travelTimes);
     } catch (err) {
       if (requestId !== stationLoadRequest) return;
       loadingEl.style.display = "none";
@@ -105,7 +166,6 @@ async function main() {
       stationCountCache.set(f.properties.duration, f.properties.stationCount);
     }
 
-    const slider = document.getElementById("time-slider") as HTMLInputElement;
     const currentIdx = parseInt(slider.value);
     const maxMinutes = getTimeBandValue(currentIdx);
 
@@ -114,9 +174,10 @@ async function main() {
     updateReachableMarkers(maxMinutes);
 
     setSummary(station, maxMinutes);
+    writeHash(station.id, currentIdx);
   }
 
-  map.on("load", async () => {
+  map.once("style.load", async () => {
     try {
       const [stations, railSegments] = await Promise.all([loadStations(), loadRailSegments()]);
       allStations = stations;
@@ -138,11 +199,18 @@ async function main() {
         if (currentIsochrones) {
           renderIsochrones(map, currentIsochrones, maxMinutes);
           setSummary(currentStation, maxMinutes);
+          writeHash(currentStation.id, bandIndex);
         }
       });
 
-      const klSentral = stations.find((s) => s.id === "ktm:19100") || stations[0];
-      await loadStation(klSentral);
+      const initial = readHash();
+      if (initial.band !== undefined) setSliderIndex(initial.band);
+
+      const startStation =
+        stations.find((s) => s.id === initial.stationId) ||
+        stations.find((s) => s.id === "ktm:19100") ||
+        stations[0];
+      await loadStation(startStation);
     } catch (err) {
       loadingEl.style.display = "none";
       errorEl.textContent = `Failed to load data: ${err instanceof Error ? err.message : String(err)}`;

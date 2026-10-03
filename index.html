@@ -4,7 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SEA Transit — How far can you go by train?</title>
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
+  <meta name="description" content="Interactive map of how far you can travel by train from any station in Malaysia, Singapore and Thailand, from 1 to 48 hours.">
+  <meta name="theme-color" content="#ffffff">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SEA Transit — How far can you go by train?">
+  <meta property="og:description" content="Approximate train reachability from stations across Malaysia, Singapore and Thailand.">
+  <meta name="twitter:card" content="summary">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚆</text></svg>">
 </head>
 <body>
@@ -18,12 +23,13 @@
   <div id="map"></div>
   <div id="loading" role="status" aria-live="polite">Loading data...</div>
   <div id="error" role="alert"></div>
+  <div id="panel-wrap">
   <section id="control-panel" aria-label="Reachability controls">
     <h1 id="origin-heading">How far can you go by train from KL Sentral?</h1>
     <div class="panel-body">
       <div class="panel-actions">
-        <button type="button" class="icon-button" data-map-action="zoom-out" aria-label="Zoom out">−</button>
-        <button type="button" class="icon-button" data-map-action="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="icon-button" id="play-button" aria-label="Play time animation">▶</button>
+        <button type="button" class="icon-button" id="stop-button" aria-label="Reset time">■</button>
         <div id="search-overlay">
           <input id="search-input" type="text" placeholder="Other station..." autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-autocomplete="list" aria-controls="search-results" aria-label="Search stations">
           <div id="search-results" role="listbox"></div>
@@ -40,6 +46,8 @@
     </div>
     <div class="data-note" title="Colored areas approximate reachable rail corridors and station access zones.">Approximate rail-corridor coverage from static GTFS snapshots · not live journey planning</div>
   </section>
+  <div id="info-overlay">Origin: KL Sentral</div>
+  </div>
   <div id="legend">
     <div class="row" data-band="1"><span class="swatch" style="background:#6D214F"></span> 0-1h</div>
     <div class="row" data-band="2"><span class="swatch" style="background:#8D2F57"></span> 1-2h</div>
@@ -52,7 +60,6 @@
     <div class="row" data-band="9"><span class="swatch" style="background:#F6D78B"></span> 24-36h</div>
     <div class="row" data-band="10"><span class="swatch" style="background:#F7E8A5"></span> 36-48h</div>
   </div>
-  <div id="info-overlay">Origin: KL Sentral</div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
