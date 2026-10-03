@@ -13,6 +13,10 @@ export interface IsochroneFeature {
     duration: number;
     fillColor: string;
     stationCount: number;
+    /** Wider, fainter zone reachable by local transit around each station. */
+    localPolygons?: number[][][][];
+    /** Rail segments between reachable stations, drawn thin (not shaded). */
+    railLines?: number[][][];
   };
 }
 

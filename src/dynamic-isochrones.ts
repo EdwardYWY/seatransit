@@ -1,9 +1,19 @@
 import type { IsochroneCollection, IsochroneFeature, OriginTravelTimes, RailSegment, StationData } from "./data-loader";
 
 const TIME_BANDS = [60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
-const MIN_RADIUS_KM = 1.5;
-const INTERCHANGE_TIME = 10;
-const CIRCLE_STEPS = 20;
+const CIRCLE_STEPS = 24;
+
+// Only places a train actually stops are reachable. Around each stop, the time left in
+// the band is spent getting around locally:
+//  - on foot (strong area): ~4.2 km/h, capped at 45 minutes of walking
+//  - by local transit/road (faint area): ~18 km/h effective, capped at 40 minutes
+// Nothing between two distant stations is shaded; the train line itself is drawn thin.
+const WALK_KM_PER_MIN = 0.07;
+const WALK_CAP_MIN = 45;
+const LOCAL_KM_PER_MIN = 0.3;
+const LOCAL_CAP_MIN = 40;
+const EXIT_MIN = 5; // getting out of the station
+const MIN_RADIUS_KM = 0.4;
 
 export function buildDynamicIsochrones(
   origin: StationData,
@@ -25,12 +35,17 @@ export function buildDynamicIsochrones(
       if (station) reachableStations.push({ station, time });
     }
 
-    const polygons: number[][][][] = [];
+    const walk: number[][][][] = [];
+    const local: number[][][][] = [];
     for (const { station, time } of reachableStations) {
-      const radius = accessRadiusKm(maxTime, time, maxStationBufferKm(maxTime, station.id === origin.id));
-      polygons.push(circlePolygon(station.lng, station.lat, radius));
+      const spare = Math.max(maxTime - time - EXIT_MIN, 0);
+      const walkKm = Math.max(MIN_RADIUS_KM, Math.min(spare, WALK_CAP_MIN) * WALK_KM_PER_MIN);
+      const localKm = Math.max(walkKm, Math.min(spare, LOCAL_CAP_MIN) * LOCAL_KM_PER_MIN);
+      walk.push(circlePolygon(station.lng, station.lat, walkKm));
+      local.push(circlePolygon(station.lng, station.lat, localKm));
     }
 
+    const railLines: number[][][] = [];
     for (const segment of railSegments) {
       const from = stationMap.get(segment.fromId);
       const to = stationMap.get(segment.toId);
@@ -38,40 +53,24 @@ export function buildDynamicIsochrones(
       const fromTime = from.id === origin.id ? 0 : timesFromOrigin[from.id];
       const toTime = to.id === origin.id ? 0 : timesFromOrigin[to.id];
       if (fromTime === undefined || toTime === undefined) continue;
-      const segmentTime = Math.max(fromTime, toTime);
-      if (segmentTime > maxTime) continue;
-      const cap = corridorBufferKm(maxTime);
-      const fromRadius = accessRadiusKm(maxTime, fromTime, cap);
-      const toRadius = accessRadiusKm(maxTime, toTime, cap);
-      const corridor = corridorPolygon(from, to, fromRadius, toRadius);
-      if (corridor) polygons.push(corridor);
+      if (Math.max(fromTime, toTime) > maxTime) continue;
+      railLines.push([[from.lng, from.lat], [to.lng, to.lat]]);
     }
-
-    if (polygons.length === 0) continue;
 
     features.push({
       type: "Feature",
-      geometry: {
-        type: "MultiPolygon",
-        coordinates: polygons,
-      },
+      geometry: { type: "MultiPolygon", coordinates: walk },
       properties: {
         duration: maxTime,
-        fillColor: getColorForBand(maxTime),
+        fillColor: "#4a8799",
         stationCount: reachableCountFor(timesFromOrigin, maxTime),
+        localPolygons: local,
+        railLines,
       },
     });
   }
 
   return { type: "FeatureCollection", features };
-}
-
-// Reach around a station grows smoothly with the time left in the band, so areas
-// near the frontier taper off instead of ending as uniform blobs.
-function accessRadiusKm(maxTime: number, arrivalTime: number, capKm: number): number {
-  const remaining = Math.max(maxTime - arrivalTime, 0);
-  const tau = Math.max(maxTime * 0.3, 20);
-  return Math.max(MIN_RADIUS_KM, capKm * (1 - Math.exp(-(remaining + INTERCHANGE_TIME) / tau)));
 }
 
 function reachableCountFor(timesFromOrigin: Record<string, number>, maxTime: number): number {
@@ -102,68 +101,4 @@ function circlePolygon(lng: number, lat: number, radiusKm: number): number[][][]
   }
 
   return [ring];
-}
-
-function maxStationBufferKm(duration: number, isOrigin = false): number {
-  if (isOrigin) return duration <= 60 ? 10 : 14;
-  if (duration <= 60) return 8;
-  if (duration <= 240) return 11;
-  if (duration <= 720) return 15;
-  if (duration <= 1440) return 19;
-  return 23;
-}
-
-function corridorBufferKm(duration: number): number {
-  if (duration <= 60) return 5;
-  if (duration <= 240) return 7;
-  if (duration <= 720) return 10;
-  if (duration <= 1440) return 13;
-  return 16;
-}
-
-function corridorPolygon(from: StationData, to: StationData, fromRadiusKm: number, toRadiusKm: number): number[][][] | null {
-  const kmPerLatDegree = 111.32;
-  const avgLatRad = ((from.lat + to.lat) * Math.PI) / 360;
-  const kmPerLngDegree = Math.max(20, kmPerLatDegree * Math.cos(avgLatRad));
-  const dx = (to.lng - from.lng) * kmPerLngDegree;
-  const dy = (to.lat - from.lat) * kmPerLatDegree;
-  const length = Math.hypot(dx, dy);
-  if (length < 0.05) return null;
-
-  const heading = Math.atan2(dy, dx);
-  const capSteps = 8;
-  const ring: number[][] = [];
-  const appendPoint = (centerX: number, centerY: number, angle: number, radiusKm: number) => {
-    const x = centerX + Math.cos(angle) * radiusKm;
-    const y = centerY + Math.sin(angle) * radiusKm;
-    ring.push([
-      Math.round((from.lng + x / kmPerLngDegree) * 1e5) / 1e5,
-      Math.round((from.lat + y / kmPerLatDegree) * 1e5) / 1e5,
-    ]);
-  };
-
-  for (let i = 0; i <= capSteps; i++) {
-    appendPoint(0, 0, heading + Math.PI / 2 + (i * Math.PI) / capSteps, fromRadiusKm);
-  }
-  for (let i = 0; i <= capSteps; i++) {
-    appendPoint(dx, dy, heading - Math.PI / 2 + (i * Math.PI) / capSteps, toRadiusKm);
-  }
-  ring.push([...ring[0]]);
-  return [ring];
-}
-
-function getColorForBand(duration: number): string {
-  const colors: Record<number, string> = {
-    60: "#440154",
-    120: "#482878",
-    180: "#3e4989",
-    240: "#31688e",
-    360: "#26828e",
-    480: "#1f9e89",
-    720: "#35b779",
-    1440: "#6ece58",
-    2160: "#b5de2b",
-    2880: "#fde725",
-  };
-  return colors[duration] || "#333333";
 }

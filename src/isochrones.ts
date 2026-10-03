@@ -2,11 +2,14 @@ import maplibregl from "maplibre-gl";
 import type { IsochroneCollection, IsochroneFeature } from "./data-loader";
 
 // One muted colour for the whole reachable area, so the basemap stays readable underneath.
-const FILL_COLOR = "#4a8799";
-const EDGE_COLOR = "#245a6d";
-const AREA_OPACITY = 0.42;
+const WALK_COLOR = "#2f7186";
+const LOCAL_COLOR = "#8fbac7";
+const LOCAL_EDGE_COLOR = "#6aa0b0";
+const RAIL_COLOR = "#1f4f60";
+const AREA_OPACITY = 0.5;
 const MAX_CANVAS_PX = 3200;
-const EDGE_PX = 3;
+const EDGE_PX = 2;
+const RAIL_PX = 2.5;
 
 type Ring = number[][];
 
@@ -14,6 +17,10 @@ function polygonsOf(feature: IsochroneFeature): Ring[][] {
   return feature.geometry.type === "Polygon"
     ? [feature.geometry.coordinates as Ring[]]
     : (feature.geometry.coordinates as Ring[][]);
+}
+
+function allPolygons(feature: IsochroneFeature): Ring[][] {
+  return [...polygonsOf(feature), ...((feature.properties.localPolygons as Ring[][]) ?? [])];
 }
 
 // Web-mercator world coordinates, 0..1.
@@ -33,7 +40,7 @@ function latOf(y: number): number {
 // Painting the shapes onto a canvas merges overlaps for free; a translucent vector fill
 // would double-blend wherever the buffers overlap.
 function paintArea(feature: IsochroneFeature) {
-  const polygons = polygonsOf(feature);
+  const polygons = allPolygons(feature);
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const poly of polygons) {
     for (const [lng, lat] of poly[0]) {
@@ -63,14 +70,31 @@ function paintArea(feature: IsochroneFeature) {
     ctx.closePath();
   };
 
-  // Edge pass first (slightly expanded), fill pass on top: only the outer boundary keeps the edge colour.
+  // Faint local-transit zone with a soft edge, then the walking zone, then the thin rail lines.
   ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const local = (feature.properties.localPolygons as Ring[][]) ?? [];
   ctx.lineWidth = EDGE_PX * 2;
-  ctx.fillStyle = EDGE_COLOR;
-  ctx.strokeStyle = EDGE_COLOR;
-  for (const poly of polygons) { trace(poly); ctx.fill(); ctx.stroke(); }
-  ctx.fillStyle = FILL_COLOR;
-  for (const poly of polygons) { trace(poly); ctx.fill(); }
+  ctx.fillStyle = LOCAL_EDGE_COLOR;
+  ctx.strokeStyle = LOCAL_EDGE_COLOR;
+  for (const poly of local) { trace(poly); ctx.fill(); ctx.stroke(); }
+  ctx.fillStyle = LOCAL_COLOR;
+  for (const poly of local) { trace(poly); ctx.fill(); }
+  ctx.fillStyle = WALK_COLOR;
+  for (const poly of polygonsOf(feature)) { trace(poly); ctx.fill(); }
+
+  ctx.strokeStyle = RAIL_COLOR;
+  ctx.lineWidth = RAIL_PX;
+  for (const line of (feature.properties.railLines as number[][][]) ?? []) {
+    ctx.beginPath();
+    line.forEach(([lng, lat], idx) => {
+      const px = (worldX(lng) - minX) * scale;
+      const py = (worldY(lat) - minY) * scale;
+      if (idx === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  }
 
   const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
     [lngOf(minX), latOf(minY)],
