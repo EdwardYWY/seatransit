@@ -2,14 +2,13 @@ import maplibregl from "maplibre-gl";
 import type { IsochroneCollection, IsochroneFeature } from "./data-loader";
 
 // One muted colour for the whole reachable area, so the basemap stays readable underneath.
-const WALK_COLOR = "#2f7186";
-const LOCAL_COLOR = "#8fbac7";
-const LOCAL_EDGE_COLOR = "#6aa0b0";
-const RAIL_COLOR = "#1f4f60";
-const AREA_OPACITY = 0.5;
+const WALK_COLOR = "#0d9488";
+const LOCAL_COLOR = "#6fd3c6";
+const LOCAL_EDGE_COLOR = "#2fb3a3";
+const RAIL_COLOR = "#134e4a";
+const LONG_SEGMENT_KM = 25;
 const MAX_CANVAS_PX = 3200;
 const EDGE_PX = 2;
-const RAIL_PX = 2.5;
 
 type Ring = number[][];
 
@@ -83,19 +82,6 @@ function paintArea(feature: IsochroneFeature) {
   ctx.fillStyle = WALK_COLOR;
   for (const poly of polygonsOf(feature)) { trace(poly); ctx.fill(); }
 
-  ctx.strokeStyle = RAIL_COLOR;
-  ctx.lineWidth = RAIL_PX;
-  for (const line of (feature.properties.railLines as number[][][]) ?? []) {
-    ctx.beginPath();
-    line.forEach(([lng, lat], idx) => {
-      const px = (worldX(lng) - minX) * scale;
-      const py = (worldY(lat) - minY) * scale;
-      if (idx === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    });
-    ctx.stroke();
-  }
-
   const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
     [lngOf(minX), latOf(minY)],
     [lngOf(maxX), latOf(minY)],
@@ -133,10 +119,56 @@ export function renderIsochrones(
     id: "isochrone-area",
     type: "raster",
     source: "isochrone-src",
-    paint: { "raster-opacity": AREA_OPACITY, "raster-fade-duration": 0, "raster-resampling": "linear" },
+    paint: {
+      // Lighter as you zoom in so the basemap detail shows through.
+      "raster-opacity": ["interpolate", ["linear"], ["zoom"], 5, 0.62, 9, 0.5, 12, 0.36],
+      "raster-fade-duration": 0,
+      "raster-resampling": "linear",
+    },
   }, beforeLayer);
 
   addWaterMask(map, beforeLayer);
+  addRailLines(map, feature);
+}
+
+function segmentKm(a: number[], b: number[]): number {
+  const dx = (b[0] - a[0]) * 111.32 * Math.cos(((a[1] + b[1]) * Math.PI) / 360);
+  const dy = (b[1] - a[1]) * 111.32;
+  return Math.hypot(dx, dy);
+}
+
+// Thin vector lines (crisp at every zoom). Long hops between non-adjacent stops are dashed
+// because the data has no real track geometry for them.
+function addRailLines(map: maplibregl.Map, feature: IsochroneFeature): void {
+  const lines = (feature.properties.railLines as number[][][]) ?? [];
+  if (lines.length === 0) return;
+  map.addSource("isochrone-rail-src", {
+    type: "geojson",
+    data: {
+      type: "FeatureCollection",
+      features: lines.map((coordinates) => ({
+        type: "Feature" as const,
+        properties: { long: segmentKm(coordinates[0], coordinates[1]) > LONG_SEGMENT_KM },
+        geometry: { type: "LineString" as const, coordinates },
+      })),
+    },
+  });
+  const width: maplibregl.ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 5, 0.8, 10, 1.8];
+  const before = map.getLayer("station-circles") ? "station-circles" : undefined;
+  map.addLayer({
+    id: "isochrone-rail-solid",
+    type: "line",
+    source: "isochrone-rail-src",
+    filter: ["==", ["get", "long"], false],
+    paint: { "line-color": RAIL_COLOR, "line-width": width, "line-opacity": 0.65 },
+  }, before);
+  map.addLayer({
+    id: "isochrone-rail-dashed",
+    type: "line",
+    source: "isochrone-rail-src",
+    filter: ["==", ["get", "long"], true],
+    paint: { "line-color": RAIL_COLOR, "line-width": width, "line-opacity": 0.4, "line-dasharray": [2, 3] },
+  }, before);
 }
 
 // Re-draw the basemap's water on top of the bands so coverage never shows over the sea.

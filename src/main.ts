@@ -37,8 +37,17 @@ async function main() {
 
   const slider = document.getElementById("time-slider") as HTMLInputElement;
   const playButton = document.getElementById("play-button") as HTMLButtonElement;
-  const stopButton = document.getElementById("stop-button") as HTMLButtonElement;
   let playTimer: number | undefined;
+  let fitTimer: number | undefined;
+
+  // After the slider settles, refit so growth outside the current view is visible.
+  function scheduleFit(delay: number) {
+    window.clearTimeout(fitTimer);
+    fitTimer = window.setTimeout(() => {
+      const minutes = getTimeBandValue(parseInt(slider.value));
+      if (currentStation && minutes > 0) fitToReachable(currentStation, minutes, currentTravelTimes);
+    }, delay);
+  }
 
   function setSliderIndex(index: number) {
     slider.value = String(index);
@@ -67,9 +76,18 @@ async function main() {
   }
 
   playButton.addEventListener("click", () => (playTimer === undefined ? startPlayback() : stopPlayback()));
-  stopButton.addEventListener("click", () => {
-    stopPlayback();
-    setSliderIndex(0);
+
+  const panel = document.getElementById("control-panel")!;
+  const handle = document.getElementById("sheet-handle")!;
+  handle.addEventListener("click", () => {
+    const expanded = panel.classList.toggle("expanded");
+    handle.setAttribute("aria-expanded", String(expanded));
+  });
+  const infoButton = document.getElementById("info-button")!;
+  const dataNote = document.getElementById("data-note")!;
+  infoButton.addEventListener("click", () => {
+    dataNote.hidden = !dataNote.hidden;
+    infoButton.setAttribute("aria-expanded", String(!dataNote.hidden));
   });
   slider.addEventListener("pointerdown", stopPlayback);
 
@@ -95,10 +113,13 @@ async function main() {
       if (t !== undefined && t <= limit) bounds.extend([s.lng, s.lat]);
     }
     const mobile = window.innerWidth <= 760;
+    const panelHeight = panel.offsetHeight;
     map.fitBounds(bounds, {
-      padding: { top: mobile ? 250 : 200, bottom: mobile ? 90 : 60, left: 40, right: 40 },
+      padding: mobile
+        ? { top: 70, bottom: panelHeight + 30, left: 30, right: 30 }
+        : { top: panelHeight + 90, bottom: 50, left: 40, right: 40 },
       maxZoom: 9,
-      duration: 1000,
+      duration: 800,
     });
   }
 
@@ -134,7 +155,7 @@ async function main() {
     const count = stationCountFor(maxMinutes);
     const stationName = displayStationName(station.name);
     updateSliderValue(maxMinutes <= 0 ? "Origin only" : `Within ${formatDuration(maxMinutes)} · ${count} ${count === 1 ? "station" : "stations"}`);
-    document.getElementById("origin-heading")!.textContent = `How far can you go by train from ${stationName}?`;
+    document.getElementById("origin-name")!.textContent = stationName;
   }
 
   async function loadStation(station: StationData) {
@@ -189,6 +210,30 @@ async function main() {
         }
       });
 
+      const tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+      const stationById = new Map(stations.map((s) => [s.id, s]));
+      map.on("mousemove", "station-circles", (e) => {
+        const id = String(e.features?.[0]?.properties?.id ?? "");
+        const station = stationById.get(id);
+        if (!station) return;
+        const isOrigin = station.id === currentStation?.id;
+        const minutes = currentTravelTimes[station.id];
+        const detail = isOrigin
+          ? "Starting point"
+          : minutes === undefined
+            ? "Not reachable by train from here"
+            : `${formatDuration(minutes)} by train · click to start here`;
+        const el = document.createElement("div");
+        el.className = "station-tip";
+        const name = document.createElement("b");
+        name.textContent = displayStationName(station.name);
+        const sub = document.createElement("span");
+        sub.textContent = detail;
+        el.append(name, document.createElement("br"), sub);
+        tip.setLngLat([station.lng, station.lat]).setDOMContent(el).addTo(map);
+      });
+      map.on("mouseleave", "station-circles", () => tip.remove());
+
       setupStationSearch(stations, async (station) => {
         await loadStation(station);
       });
@@ -199,6 +244,7 @@ async function main() {
           renderIsochrones(map, currentIsochrones, maxMinutes);
           setSummary(currentStation, maxMinutes);
           writeHash(currentStation.id, bandIndex);
+          scheduleFit(playTimer !== undefined ? 0 : 450);
         }
       });
 

@@ -6,12 +6,12 @@ const CIRCLE_STEPS = 24;
 // Only places a train actually stops are reachable. Around each stop, the time left in
 // the band is spent getting around locally:
 //  - on foot (strong area): ~4.2 km/h, capped at 45 minutes of walking
-//  - by local transit/road (faint area): ~18 km/h effective, capped at 40 minutes
+//  - by local transit/road (faint area): ~18 km/h effective, capped at 35 minutes
 // Nothing between two distant stations is shaded; the train line itself is drawn thin.
 const WALK_KM_PER_MIN = 0.07;
 const WALK_CAP_MIN = 45;
 const LOCAL_KM_PER_MIN = 0.3;
-const LOCAL_CAP_MIN = 40;
+const LOCAL_CAP_MIN = 35;
 const EXIT_MIN = 5; // getting out of the station
 const MIN_RADIUS_KM = 0.4;
 
@@ -46,7 +46,11 @@ export function buildDynamicIsochrones(
     }
 
     const railLines: number[][][] = [];
+    const seenLines = new Set<string>();
     for (const segment of railSegments) {
+      const key = segment.fromId < segment.toId ? `${segment.fromId}|${segment.toId}` : `${segment.toId}|${segment.fromId}`;
+      if (seenLines.has(key)) continue;
+      seenLines.add(key);
       const from = stationMap.get(segment.fromId);
       const to = stationMap.get(segment.toId);
       if (!from || !to) continue;
@@ -62,7 +66,7 @@ export function buildDynamicIsochrones(
       geometry: { type: "MultiPolygon", coordinates: walk },
       properties: {
         duration: maxTime,
-        fillColor: "#4a8799",
+        fillColor: "#0d9488",
         stationCount: reachableCountFor(timesFromOrigin, maxTime),
         localPolygons: local,
         railLines,

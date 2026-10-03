@@ -22,7 +22,7 @@ export function addStationMarkers(
       id: s.id,
       name: displayStationName(s.name),
       country: s.country,
-      color: s.country === "MY" ? "#38A169" : s.country === "SG" ? "#3182CE" : "#9F7AEA",
+      color: "#0f766e",
     },
   }));
 
@@ -56,13 +56,13 @@ export function addStationMarkers(
         ["linear"],
         ["zoom"],
         5,
-        ["case", ["get", "selected"], 8, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 1.8, 2.6]],
+        ["case", ["get", "selected"], 11, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 1.8, 2.6]],
         8,
-        ["case", ["get", "selected"], 8, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 2.5, 3.6]],
+        ["case", ["get", "selected"], 11, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 2.5, 3.6]],
         12,
-        ["case", ["get", "selected"], 8, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 4.2, 5.2]],
+        ["case", ["get", "selected"], 11, ["case", ["in", ["get", "country"], ["literal", ["SG", "TH"]]], 4.2, 5.2]],
       ],
-      "circle-color": ["case", ["get", "selected"], "#0f172a", ["get", "color"]],
+      "circle-color": ["case", ["get", "selected"], "#134e4a", ["get", "color"]],
       "circle-opacity": [
         "interpolate",
         ["linear"],
@@ -118,6 +118,36 @@ export function addStationMarkers(
       "text-halo-width": 1.4,
       "text-halo-blur": 0.4,
     },
+  });
+
+  // Origin: ring + bold label drawn on top of everything so it is never lost in a cluster.
+  map.addLayer({
+    id: "station-origin-ring",
+    type: "circle",
+    source: "stations",
+    filter: ["==", ["get", "selected"], true],
+    paint: {
+      "circle-radius": 17,
+      "circle-color": "rgba(19,78,74,0.12)",
+      "circle-stroke-color": "#134e4a",
+      "circle-stroke-width": 2,
+    },
+  });
+  map.addLayer({
+    id: "station-origin-label",
+    type: "symbol",
+    source: "stations",
+    filter: ["==", ["get", "selected"], true],
+    layout: {
+      "text-field": ["get", "name"],
+      "text-font": ["Noto Sans Bold"],
+      "text-size": 14,
+      "text-offset": [0, -1.5],
+      "text-anchor": "bottom",
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+    },
+    paint: { "text-color": "#0f2f2d", "text-halo-color": "#ffffff", "text-halo-width": 2 },
   });
 
   map.on("click", "station-circles", (e) => {

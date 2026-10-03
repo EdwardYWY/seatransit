@@ -1,5 +1,5 @@
 const TIME_BANDS = [0, 60, 120, 180, 240, 360, 480, 720, 1440, 2160, 2880];
-const BAND_COLORS = ["#94a3b8", ...Array(10).fill("#3f7f93")];
+const TIME_LABELS = ["0h", "1h", "2h", "3h", "4h", "6h", "8h", "12h", "1d", "1½d", "2d"];
 
 export function getTimeBandValue(index: number): number {
   const safeIndex = Math.max(0, Math.min(index, TIME_BANDS.length - 1));
@@ -30,7 +30,10 @@ export function setupSlider(onChange: (bandMinutes: number, bandIndex: number) =
     const value = Number(slider.value) || 0;
     const pct = (value / max) * 100;
     slider.style.setProperty("--slider-progress", `${pct}%`);
-    slider.style.setProperty("--slider-fill", BAND_COLORS[Math.max(0, Math.min(value, BAND_COLORS.length - 1))]);
+    const overlay = document.getElementById("slider-overlay");
+    overlay?.style.setProperty("--frac", String(value / max));
+    const bubble = document.getElementById("thumb-bubble");
+    if (bubble) bubble.textContent = TIME_LABELS[Math.max(0, Math.min(value, TIME_LABELS.length - 1))];
   };
 
   const update = () => {
